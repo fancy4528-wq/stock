@@ -1,0 +1,25 @@
+-- Drop P0 PIT functions and schema (reverse of 001/002).
+
+DROP FUNCTION IF EXISTS get_prices_as_of(BIGINT[], DATE, DATE, TIMESTAMPTZ, TEXT);
+DROP FUNCTION IF EXISTS get_universe_as_of(TEXT, DATE);
+DROP FUNCTION IF EXISTS get_industry_as_of(BIGINT[], DATE, TEXT);
+DROP FUNCTION IF EXISTS get_financials_as_of(BIGINT[], TIMESTAMPTZ, INT);
+
+DROP TABLE IF EXISTS valuation_daily CASCADE;
+DROP TABLE IF EXISTS financial_indicator CASCADE;
+DROP TABLE IF EXISTS financial_statement CASCADE;
+DROP TABLE IF EXISTS trading_calendar CASCADE;
+DROP TABLE IF EXISTS adjust_factor CASCADE;
+DROP TABLE IF EXISTS price_daily CASCADE;
+DROP TABLE IF EXISTS universe_snapshot CASCADE;
+DROP TABLE IF EXISTS universe CASCADE;
+DROP TABLE IF EXISTS security_industry CASCADE;
+DROP TABLE IF EXISTS industry CASCADE;
+DROP TABLE IF EXISTS industry_taxonomy CASCADE;
+DROP TABLE IF EXISTS security_status_history CASCADE;
+DROP TABLE IF EXISTS security CASCADE;
+
+DROP TYPE IF EXISTS data_quality;
+DROP TYPE IF EXISTS board_type;
+DROP TYPE IF EXISTS listing_status;
+DROP TYPE IF EXISTS market_code;
