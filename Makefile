@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features backtest report test lint smoke
+.PHONY: help install db-init db-migrate ingest features backtest backtest-baseline test-sentinel report test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -27,11 +27,14 @@ ingest-daily:   ## 每日增量采集
 features:       ## 计算因子
 	uv run python -m quantagent.cli features --market CN
 
-backtest-baseline: ## 跑基准回测
-	uv run python -m quantagent.cli backtest --strategy buy_and_hold
+backtest-baseline: ## 跑沪深300 Buy&Hold 基线并写入 docs/baseline-results.md
+	uv run python -m quantagent.cli backtest --strategy buy_and_hold --symbol 000300.SH --start 2015-01-01 --write-baseline docs/baseline-results.md
 
 backtest:       ## 跑指定策略回测
 	uv run python -m quantagent.cli backtest --strategy $(STRATEGY)
+
+test-sentinel:  ## 跑未来函数哨兵（集成）
+	uv run pytest tests/integration/test_pit_sentinel.py tests/integration/test_backtest_sentinel.py -v
 
 report:         ## 生成日报
 	uv run python -m quantagent.cli report --market CN
@@ -42,11 +45,11 @@ test:           ## 跑全部测试
 test-fast:      ## 只跑单元测试
 	uv run pytest tests/unit -v
 
-smoke:          ## P0+W2 一键 smoke（A→E）
-	uv run python scripts/smoke_p0_w2.py
+smoke:          ## P0 一键 smoke（A→H，含 W3 load + W4 财务/指数/回测）
+	uv run python scripts/smoke_p0.py
 
 smoke-offline:  ## smoke 仅 A+B（不联网）
-	uv run python scripts/smoke_p0_w2.py --skip-network
+	uv run python scripts/smoke_p0.py --skip-network
 
 lint:           ## 检查
 	uv run ruff check src tests

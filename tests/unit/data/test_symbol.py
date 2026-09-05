@@ -24,6 +24,7 @@ from quantagent.data.normalizers.symbol import normalize_symbol, to_baostock_cod
         ("830799", "830799.BJ"),
         ("920001", "920001.BJ"),
         ("510300", "510300.SH"),
+        ("000300.SH", "000300.SH"),
     ],
 )
 def test_normalize_symbol_cn(raw: str, expected: str) -> None:
