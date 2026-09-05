@@ -67,7 +67,11 @@ def normalize_symbol(raw: str, *, market: str) -> str:
 
 
 def _infer_exchange(digits: str) -> str:
-    """Map A-share code segments to exchange. Refs: docs/04-data-sources.md#2.4."""
+    """Map A-share code segments to exchange. Refs: docs/04-data-sources.md#2.4.
+
+    Index codes that collide with stock segments (e.g. ``000300``) must be passed
+    with an explicit ``.SH`` / ``.SZ`` suffix — bare digits follow the stock rules.
+    """
     if digits.startswith(("60", "68", "90", "51", "58")):
         return "SH"
     if digits.startswith(("00", "30", "20", "15", "16", "18")):

@@ -43,6 +43,10 @@ class PriceNormalizer:
     def normalize(self, batch: RawBatch, df: pl.DataFrame | None = None) -> pl.DataFrame:
         frame = df if df is not None else pl.read_parquet(batch.raw_path)
         if batch.source == "akshare":
+            if batch.meta.get("kind") == "index" or (
+                "date" in frame.columns and "开盘" not in frame.columns and "code" not in frame.columns
+            ):
+                return self._normalize_akshare_index(frame, batch)
             return self._normalize_akshare(frame, batch)
         if batch.source == "baostock":
             return self._normalize_baostock(frame, batch)
@@ -76,6 +80,35 @@ class PriceNormalizer:
                 if "换手率" in cols
                 else pl.lit(None).cast(pl.Float64)
             ).alias("turnover_rate"),
+            pl.lit(batch.source).alias("source"),
+        )
+        return out.select(CANONICAL_PRICE_COLUMNS)
+
+    def _normalize_akshare_index(self, df: pl.DataFrame, batch: RawBatch) -> pl.DataFrame:
+        """akshare ``stock_zh_index_daily``: date/open/high/low/close/volume (股)."""
+        required = {"date", "open", "high", "low", "close", "volume"}
+        missing = required - set(df.columns)
+        if missing:
+            raise DataError(f"akshare index frame missing columns: {sorted(missing)}")
+
+        symbol_expr = self._akshare_symbol_expr(df, batch)
+        date_col = pl.col("date")
+        if df.schema.get("date") == pl.Utf8:
+            date_expr = date_col.str.to_date()
+        else:
+            date_expr = date_col.cast(pl.Date)
+
+        out = df.select(
+            symbol_expr.alias("symbol"),
+            date_expr.alias("trade_date"),
+            pl.col("open").cast(pl.Float64).alias("open"),
+            pl.col("high").cast(pl.Float64).alias("high"),
+            pl.col("low").cast(pl.Float64).alias("low"),
+            pl.col("close").cast(pl.Float64).alias("close"),
+            pl.lit(None).cast(pl.Float64).alias("prev_close"),
+            pl.col("volume").cast(pl.Int64).alias("volume"),
+            pl.lit(None).cast(pl.Float64).alias("amount"),
+            pl.lit(None).cast(pl.Float64).alias("turnover_rate"),
             pl.lit(batch.source).alias("source"),
         )
         return out.select(CANONICAL_PRICE_COLUMNS)
