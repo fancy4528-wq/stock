@@ -1,6 +1,7 @@
 """Pydantic Settings for runtime configuration."""
 
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from pydantic import Field, computed_field
@@ -22,6 +23,14 @@ class Settings(BaseSettings):
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
     pg_password: str = Field(default="change-me", alias="PG_PASSWORD")
     database_url_override: str | None = Field(default=None, alias="DATABASE_URL")
+
+    data_raw_dir: Path = Field(default=Path("data/raw"), alias="DATA_RAW_DIR")
+    akshare_rate_limit: float = Field(default=0.5, alias="AKSHARE_RATE_LIMIT")
+    baostock_rate_limit: float = Field(default=0.2, alias="BAOSTOCK_RATE_LIMIT")
+    # Windows often points HTTP(S) at a local Clash port; if that client is down,
+    # akshare/baostock fail with ProxyError. Default: bypass system proxy for collectors.
+    # NOTE: env name must NOT end with `_PROXY` — urllib treats `*_PROXY` as a proxy URL.
+    collector_bypass_proxy: bool = Field(default=True, alias="COLLECTOR_DISABLE_SYSTEM_PROXY")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
