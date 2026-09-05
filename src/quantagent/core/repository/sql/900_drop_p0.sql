@@ -1,4 +1,8 @@
 -- Drop P0 PIT functions and schema (reverse of 001/002).
+-- Call 901_drop_ingest_quality.sql first when rolling back past W3.
+
+DROP TABLE IF EXISTS data_quality_check CASCADE;
+DROP TABLE IF EXISTS ingest_batch CASCADE;
 
 DROP FUNCTION IF EXISTS get_prices_as_of(BIGINT[], DATE, DATE, TIMESTAMPTZ, TEXT);
 DROP FUNCTION IF EXISTS get_universe_as_of(TEXT, DATE);

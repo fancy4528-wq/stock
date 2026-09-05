@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features backtest report test lint
+.PHONY: help install db-init db-migrate ingest features backtest report test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -41,6 +41,12 @@ test:           ## 跑全部测试
 
 test-fast:      ## 只跑单元测试
 	uv run pytest tests/unit -v
+
+smoke:          ## P0+W2 一键 smoke（A→E）
+	uv run python scripts/smoke_p0_w2.py
+
+smoke-offline:  ## smoke 仅 A+B（不联网）
+	uv run python scripts/smoke_p0_w2.py --skip-network
 
 lint:           ## 检查
 	uv run ruff check src tests

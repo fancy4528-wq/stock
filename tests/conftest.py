@@ -30,6 +30,8 @@ def pg_engine() -> Engine:
 def clean_pit_tables(pg_engine: Engine) -> Engine:
     """Truncate P0 tables between tests (FK-safe order)."""
     tables = [
+        "data_quality_check",
+        "ingest_batch",
         "valuation_daily",
         "financial_indicator",
         "financial_statement",
