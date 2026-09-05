@@ -13,3 +13,4 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-05 | akshare.stock_zh_a_hist | 同日近窗拉取偶发 `RemoteDisconnected`（东财不稳定） | tenacity 重试 + `COLLECTOR_DISABLE_SYSTEM_PROXY`；失败不静默 |
 | 2026-09-05 | (network) | Windows 系统代理 `127.0.0.1:7897`（Clash 未开）→ ProxyError | `COLLECTOR_DISABLE_SYSTEM_PROXY=true`：清 proxy env + `NO_PROXY=*` + 空 `getproxies` |
 | 2026-09-05 | (diag) | 代理已关：裸 `requests` 打 kline API 与裸 `akshare` 均 `RemoteDisconnected`；`push2his` 根路径 404 可达；baostock 正常 | **判定为东财源/链路问题，非本仓库 Collector 逻辑**；环境变量勿用 `*_PROXY` 后缀（已改名） |
+| 2026-09-05 | W3 Loader | `price_daily` UPSERT + `ingest_batch` / `data_quality_check`；CLI `--load` | PX_001/002/003/005 ERROR，PX_008 WARN；日历/双源规则留后续 | |

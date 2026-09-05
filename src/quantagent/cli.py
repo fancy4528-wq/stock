@@ -33,6 +33,21 @@ def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
+def _load_prices(df, *, source: str, raw_path: Path | None, target_date: date) -> None:
+    from quantagent.data.loaders import PriceLoader
+
+    result = PriceLoader().load(
+        df,
+        source=source,
+        raw_path=raw_path,
+        target_date=target_date,
+    )
+    print(
+        f"loaded batch_id={result['batch_id']} rows={result['rows_loaded']} "
+        f"status={result['status']}"
+    )
+
+
 async def _ingest_prices(
     *,
     symbols: list[str],
@@ -40,6 +55,7 @@ async def _ingest_prices(
     end: date,
     source: str,
     archive_root: Path | None,
+    load: bool,
 ) -> None:
     from quantagent.data.collectors.akshare import AksharePriceCollector
     from quantagent.data.collectors.baostock import BaostockPriceCollector
@@ -60,15 +76,21 @@ async def _ingest_prices(
     )
     if df.height:
         print(df.head(3))
+    if load and df.height:
+        _load_prices(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
 
 
-def _replay_normalize(raw_path: Path) -> None:
+def _replay_normalize(raw_path: Path, *, load: bool) -> None:
     from quantagent.data.normalizers.price import PriceNormalizer
 
     df = PriceNormalizer().normalize_from_archive(raw_path)
     print(f"replayed normalize path={raw_path} rows={df.height}")
     if df.height:
         print(df.head(5))
+    if load and df.height:
+        source = str(df["source"][0]) if "source" in df.columns else "archive"
+        end = df["trade_date"].max()
+        _load_prices(df, source=source, raw_path=raw_path, target_date=end)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -95,6 +117,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Replay normalize from an existing raw Parquet (no fetch)",
     )
+    ingest.add_argument(
+        "--load",
+        action="store_true",
+        help="Validate and UPSERT into price_daily (W3)",
+    )
     ingest.add_argument("--universe", default=None, help="Reserved for W3+ universe ingest")
 
     for name, help_text in (
@@ -114,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ingest":
         if args.from_archive is not None:
-            _replay_normalize(args.from_archive)
+            _replay_normalize(args.from_archive, load=args.load)
             return 0
 
         if not args.symbols:
@@ -138,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
                 end=end,
                 source=args.source,
                 archive_root=args.archive_root,
+                load=args.load,
             )
         )
         return 0
