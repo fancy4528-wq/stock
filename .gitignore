@@ -1,6 +1,6 @@
 .env
 config/live_enabled.yaml
-data/
+/data/
 *.parquet
 *.db
 __pycache__/
@@ -8,7 +8,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-data/artifacts/
+/data/artifacts/
 *.egg-info/
 dist/
 build/

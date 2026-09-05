@@ -36,7 +36,8 @@
 - 每个 akshare 调用包裹 `tenacity` 重试（指数退避，最多 3 次）
 - 返回结果做 schema 校验（列名、类型、行数范围）
 - 接口失效时不静默跳过，必须告警并中止依赖流程
-- 锁定 akshare 版本，升级前跑完整回归
+- **版本与字段以当日实测为准**（记入 `docs/data-access-log.md`），设计稿里的 pin 版本会过期；升级前跑完整回归
+- 示例拉取窗口应覆盖「当前月」附近交易日，避免只用多年前样本冒充接口仍可用
 
 **tushare**
 
@@ -398,8 +399,8 @@ async def collect_daily_prices():
 | 可重放 normalize | 从归档的 raw Parquet 重新 normalize，不重新拉取 |
 
 ```bash
-# 首次回填（拉取 + 处理）
-python -m ingest.backfill --dataset price_daily --start 2015-01-01 --end 2025-12-31
+# 首次回填（拉取 + 处理）— end 取「今天」所在月末/年，勿写死过期年份
+python -m ingest.backfill --dataset price_daily --start 2015-01-01 --end 2026-09-05
 
 # 仅重放 normalize（normalize 逻辑修复后）
 python -m ingest.replay --dataset price_daily --start 2015-01-01 --from-archive
