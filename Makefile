@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report test lint smoke
+.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report schedule test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -42,8 +42,11 @@ backtest:       ## 跑指定策略回测
 test-sentinel:  ## 跑未来函数哨兵（集成）
 	uv run pytest tests/integration/test_pit_sentinel.py tests/integration/test_backtest_sentinel.py -v
 
-report:         ## 生成日报
-	uv run python -m quantagent.cli report --market CN
+report:         ## 生成日报（synthetic + Shadow，写入 docs/daily-reports）
+	uv run python -m quantagent.cli report --market CN --synthetic --out docs/daily-reports
+
+schedule:       ## 跑一次调度任务（等价 schedule --once）
+	uv run python -m quantagent.cli schedule --once
 
 test:           ## 跑全部测试
 	uv run pytest -v --cov=src/quantagent --cov-report=term-missing

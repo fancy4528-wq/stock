@@ -102,6 +102,15 @@ class SimulatedBroker(BrokerAdapter):
         for pos in self._positions.values():
             pos.sellable_qty = pos.quantity
 
+    def mark_to_market(self) -> float:
+        """Revalue positions at last bar close; return equity."""
+        for sym, pos in list(self._positions.items()):
+            bar = self._bars.get(sym)
+            if bar is None:
+                continue
+            pos.market_value = pos.quantity * bar.close
+        return self._cash + sum(p.market_value for p in self._positions.values())
+
     def _can_fill(self, order: OrderRequest, bar: PriceBar) -> FillDecision:
         if bar.is_suspended:
             return FillDecision(kind="reject", reason="suspended")

@@ -1,0 +1,11 @@
+# CN daily scheduler (P1)
+
+timezone: Asia/Shanghai
+jobs:
+  daily_report:
+    cron:
+      day_of_week: mon-fri
+      hour: 18
+      minute: 0
+    out_dir: docs/daily-reports
+    shadow_dir: data/shadow
