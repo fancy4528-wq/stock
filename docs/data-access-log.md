@@ -17,3 +17,4 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-05 | akshare.stock_*_sheet_by_report_em | W4 财务三表；单位元；`NOTICE_DATE`/`UPDATE_DATE`→`announced_at`；symbol=`SH600519` | FinancialNormalizer 合并 profit/balance/cashflow；无 tushare token 时以 akshare 为主源 |
 | 2026-09-05 | akshare.stock_zh_index_daily | 沪深300 `sh000300`；列 date/OHLCV；**现窗至 2026-09-04 可拉**（5986 行历史） | Index collector 归档完整 `000300.SH`（勿只存 6 位，否则会被当成 SZ）；Buy&Hold 基线 |
 | 2026-09-06 | baostock.query_history_k_data_plus | A2：已采字段 `tradestatus`/`isST`/`preclose` 写入 `is_suspended`/`is_limit_*`/`limit_*_px`（按 cn.yaml 板块/ST 幅度，收盘价封板判定） | PriceNormalizer enrichment + PriceLoader UPSERT；akshare 用涨跌幅推 prev_close、volume=0→停牌 |
+| 2026-09-06 | akshare.tool_trade_date_hist_sina / baostock.query_trade_dates | A3：交易日历入库；调度按日历跳过非交易日；`default_as_of` 用最近开市日 | `TradingCalendar` + `make ingest-calendar`；`--dual-check` 对比双源开市日 |

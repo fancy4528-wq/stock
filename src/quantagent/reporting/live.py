@@ -450,8 +450,13 @@ def load_live_report_data(
                 )
         raise LiveReportError(f"Universe {universe_code!r} empty as_of {probe_as_of}; {hint}")
 
-    # Default as_of = latest trade date on or before request (calendar yesterday may be holiday)
-    target = as_of or date.today() - timedelta(days=1)
+    # Default as_of = last session on/before today (calendar-aware; prices may lag)
+    if as_of is None:
+        from quantagent.core.calendar import TradingCalendar
+
+        target = TradingCalendar("CN").default_as_of()
+    else:
+        target = as_of
     latest = repo.latest_trade_date(symbols + [index_symbol], on_or_before=target)
     if latest is None:
         raise LiveReportError("No price_daily rows for universe/benchmark; ingest first")
