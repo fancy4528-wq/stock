@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -11,6 +12,19 @@ import pytest
 from quantagent.scheduler.app import build_scheduler, run_once
 from quantagent.scheduler.config import load_scheduler_config
 from quantagent.scheduler.jobs.daily_pipeline import daily_live_pipeline_job
+
+
+def test_async_scheduler_starts_under_running_loop() -> None:
+    """Regression: AsyncIOScheduler.start() needs a running event loop (hang path)."""
+
+    async def _probe() -> bool:
+        sched = build_scheduler(synthetic=True)
+        sched.start()
+        running = bool(sched.running)
+        sched.shutdown(wait=False)
+        return running
+
+    assert asyncio.run(_probe()) is True
 
 
 @pytest.mark.asyncio
