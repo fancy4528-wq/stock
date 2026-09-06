@@ -10,7 +10,7 @@ from sqlalchemy import Connection, create_engine, text
 from sqlalchemy.engine import Engine
 
 from quantagent.data.normalizers.symbol import to_raw_digits
-from quantagent.data.validators import Validator, ValidationContext, persist_rule_results
+from quantagent.data.validators import ValidationContext, Validator, persist_rule_results
 from quantagent.data.validators.report import ValidationReport
 from quantagent.shared.config import get_settings
 from quantagent.shared.errors import DataError, DataQualityError
@@ -187,10 +187,14 @@ class PriceLoader:
             """
             INSERT INTO price_daily (
                 security_id, trade_date, open, high, low, close, prev_close,
-                volume, amount, turnover_rate, source, quality, ingested_at
+                volume, amount, turnover_rate,
+                limit_up_px, limit_down_px, is_limit_up, is_limit_down, is_suspended,
+                source, quality, ingested_at
             ) VALUES (
                 :security_id, :trade_date, :open, :high, :low, :close, :prev_close,
-                :volume, :amount, :turnover_rate, :source, :quality, :ingested_at
+                :volume, :amount, :turnover_rate,
+                :limit_up_px, :limit_down_px, :is_limit_up, :is_limit_down, :is_suspended,
+                :source, :quality, :ingested_at
             )
             ON CONFLICT (security_id, trade_date) DO UPDATE SET
                 open = EXCLUDED.open,
@@ -201,6 +205,11 @@ class PriceLoader:
                 volume = EXCLUDED.volume,
                 amount = EXCLUDED.amount,
                 turnover_rate = EXCLUDED.turnover_rate,
+                limit_up_px = EXCLUDED.limit_up_px,
+                limit_down_px = EXCLUDED.limit_down_px,
+                is_limit_up = EXCLUDED.is_limit_up,
+                is_limit_down = EXCLUDED.is_limit_down,
+                is_suspended = EXCLUDED.is_suspended,
                 source = EXCLUDED.source,
                 quality = EXCLUDED.quality,
                 ingested_at = EXCLUDED.ingested_at
@@ -225,6 +234,11 @@ class PriceLoader:
                     "volume": row.get("volume"),
                     "amount": row.get("amount"),
                     "turnover_rate": row.get("turnover_rate"),
+                    "limit_up_px": row.get("limit_up_px"),
+                    "limit_down_px": row.get("limit_down_px"),
+                    "is_limit_up": bool(row.get("is_limit_up") or False),
+                    "is_limit_down": bool(row.get("is_limit_down") or False),
+                    "is_suspended": bool(row.get("is_suspended") or False),
                     "source": row.get("source") or source,
                     "quality": quality,
                     "ingested_at": now,
