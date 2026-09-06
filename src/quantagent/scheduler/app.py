@@ -9,7 +9,6 @@ from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 
-from quantagent.reporting.pipeline import run_daily_pipeline
 from quantagent.scheduler.jobs.daily_report import daily_report_job
 
 
@@ -20,11 +19,18 @@ def build_scheduler(
     minute: int = 0,
     out_dir: Path | str = Path("docs/daily-reports"),
     shadow_dir: Path | str = Path("data/shadow"),
+    synthetic: bool = True,
+    universe_code: str = "mvp_cn_50",
 ) -> AsyncIOScheduler:
     sched = AsyncIOScheduler(timezone=timezone)
 
     async def _job() -> None:
-        await daily_report_job(out_dir=out_dir, shadow_dir=shadow_dir)
+        await daily_report_job(
+            out_dir=out_dir,
+            shadow_dir=shadow_dir,
+            synthetic=synthetic,
+            universe_code=universe_code,
+        )
 
     sched.add_job(
         _job,
@@ -43,12 +49,15 @@ async def run_once(
     as_of: date | None = None,
     out_dir: Path | str = Path("docs/daily-reports"),
     shadow_dir: Path | str = Path("data/shadow"),
+    synthetic: bool = True,
+    universe_code: str = "mvp_cn_50",
 ) -> Path:
-    return await run_daily_pipeline(
+    return await daily_report_job(
         as_of=as_of,
         out_dir=out_dir,
         shadow_dir=shadow_dir,
-        synthetic=True,
+        synthetic=synthetic,
+        universe_code=universe_code,
     )
 
 
@@ -56,8 +65,9 @@ def run_scheduler_blocking(**kwargs: Any) -> None:
     """Start scheduler and block (Ctrl+C to stop)."""
     sched = build_scheduler(**kwargs)
     sched.start()
+    mode = "synthetic" if kwargs.get("synthetic", True) else "live"
     print(
-        f"scheduler started: cn_daily_report cron "
+        f"scheduler started ({mode}): cn_daily_report cron "
         f"{kwargs.get('hour', 18):02d}:{kwargs.get('minute', 0):02d} Asia/Shanghai"
     )
     try:
