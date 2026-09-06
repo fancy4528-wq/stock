@@ -97,9 +97,7 @@ def _run_evaluate(
     return 0
 
 
-def _load_prices(
-    df: object, *, source: str, raw_path: Path | None, target_date: date
-) -> None:
+def _load_prices(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
     import polars as pl
 
     from quantagent.data.loaders import PriceLoader
@@ -118,9 +116,7 @@ def _load_prices(
     )
 
 
-def _load_financials(
-    df: object, *, source: str, raw_path: Path | None, target_date: date
-) -> None:
+def _load_financials(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
     import polars as pl
 
     from quantagent.data.loaders import FinancialLoader
@@ -340,6 +336,44 @@ def _run_backtest(
     return 0
 
 
+def _run_report(
+    *,
+    market: str,
+    as_of: date | None,
+    out_dir: Path,
+    shadow_dir: Path,
+    synthetic: bool,
+) -> int:
+    from quantagent.reporting.pipeline import run_daily_pipeline
+
+    path = asyncio.run(
+        run_daily_pipeline(
+            as_of=as_of,
+            market=market,
+            out_dir=out_dir,
+            shadow_dir=shadow_dir,
+            synthetic=synthetic,
+            write_cost_log=True,
+        )
+    )
+    print(f"wrote {path}")
+    return 0
+
+
+def _run_schedule(*, once: bool, as_of: date | None, out_dir: Path, shadow_dir: Path) -> int:
+    if once:
+        from quantagent.scheduler.app import run_once
+
+        path = asyncio.run(run_once(as_of=as_of, out_dir=out_dir, shadow_dir=shadow_dir))
+        print(f"schedule --once wrote {path}")
+        return 0
+
+    from quantagent.scheduler.app import run_scheduler_blocking
+
+    run_scheduler_blocking(out_dir=out_dir, shadow_dir=shadow_dir)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="quantagent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -441,9 +475,40 @@ def main(argv: list[str] | None = None) -> int:
     pf.add_argument("--top-n", type=int, default=15)
     pf.add_argument("--min-score", type=float, default=0.55)
 
-    report = sub.add_parser("report", help="Generate daily report (not yet implemented)")
-    report.add_argument("--market", default=None)
-    report.add_argument("--strategy", default=None)
+    report = sub.add_parser(
+        "report",
+        help="Generate daily markdown report + shadow step (W8; synthetic default)",
+    )
+    report.add_argument("--market", default="CN")
+    report.add_argument("--as-of", type=_parse_date, default=None)
+    report.add_argument(
+        "--out",
+        type=Path,
+        default=Path("docs/daily-reports"),
+        help="Directory for daily markdown",
+    )
+    report.add_argument(
+        "--shadow-dir",
+        type=Path,
+        default=Path("data/shadow"),
+        help="Append-only shadow journal directory",
+    )
+    report.add_argument(
+        "--synthetic",
+        action="store_true",
+        default=True,
+        help="Use synthetic demo bundle (default)",
+    )
+
+    sched = sub.add_parser("schedule", help="APScheduler daily report (W8)")
+    sched.add_argument(
+        "--once",
+        action="store_true",
+        help="Run the daily report job once and exit",
+    )
+    sched.add_argument("--as-of", type=_parse_date, default=None)
+    sched.add_argument("--out", type=Path, default=Path("docs/daily-reports"))
+    sched.add_argument("--shadow-dir", type=Path, default=Path("data/shadow"))
 
     args = parser.parse_args(argv)
 
@@ -487,6 +552,23 @@ def main(argv: list[str] | None = None) -> int:
             market=args.market,
             top_n=args.top_n,
             min_score=args.min_score,
+        )
+
+    if args.command == "report":
+        return _run_report(
+            market=args.market,
+            as_of=args.as_of,
+            out_dir=args.out,
+            shadow_dir=args.shadow_dir,
+            synthetic=args.synthetic,
+        )
+
+    if args.command == "schedule":
+        return _run_schedule(
+            once=args.once,
+            as_of=args.as_of,
+            out_dir=args.out,
+            shadow_dir=args.shadow_dir,
         )
 
     if args.command == "ingest":

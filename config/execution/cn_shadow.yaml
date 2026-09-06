@@ -1,0 +1,8 @@
+# CN shadow execution defaults (P1)
+
+initial_cash: 1000000
+baseline_n: 50
+factor_top_n: 15
+factor_name: mom_20d
+strategy_version: mvp-w8-v1
+rebalance: daily
