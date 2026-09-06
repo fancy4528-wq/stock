@@ -156,6 +156,93 @@ def _load_industry(df: object, *, source: str, raw_path: Path | None, target_dat
     )
 
 
+def _load_calendar(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
+    import polars as pl
+
+    from quantagent.core.calendar import load_trading_calendar
+    from quantagent.data.loaders import CalendarLoader
+
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
+    result = CalendarLoader().load(
+        df,
+        source=source,
+        raw_path=raw_path,
+        target_date=target_date,
+    )
+    load_trading_calendar.cache_clear()
+    n_open = int(df.filter(pl.col("is_open")).height) if "is_open" in df.columns else 0
+    print(
+        f"loaded calendar batch_id={result['batch_id']} rows={result['rows_loaded']} "
+        f"open_days={n_open} status={result['status']}"
+    )
+
+
+async def _ingest_calendar(
+    *,
+    start: date | None,
+    end: date,
+    source: str,
+    archive_root: Path | None,
+    load: bool,
+    dual_check: bool,
+) -> None:
+    import polars as pl
+
+    from quantagent.data.normalizers.calendar import CalendarNormalizer, open_dates
+
+    if source == "akshare":
+        from quantagent.data.collectors.akshare import AkshareCalendarCollector
+
+        collector = AkshareCalendarCollector(archive_root=archive_root)
+        batch = await collector.collect(end, start=start, end=end)
+    elif source == "baostock":
+        from quantagent.data.collectors.baostock import BaostockCalendarCollector
+
+        collector = BaostockCalendarCollector(archive_root=archive_root)
+        batch = await collector.collect(end, start=start or date(end.year - 10, 1, 1), end=end)
+    else:
+        raise SystemExit(f"trading_calendar ingest unsupported source={source!r}")
+
+    df = CalendarNormalizer().normalize(batch, start=start, end=end)
+    n_open = int(df.filter(pl.col("is_open")).height) if df.height else 0
+    print(
+        f"collected source={batch.source} dataset={batch.dataset} batch_id={batch.batch_id} "
+        f"rows_raw={batch.row_count} dense={df.height} open_days={n_open} path={batch.raw_path}"
+    )
+    if df.height:
+        print(df.filter(pl.col("is_open")).select(
+            ["trade_date", "is_open", "prev_trade_date", "next_trade_date"]
+        ).tail(5))
+
+    if dual_check and source == "akshare":
+        from quantagent.data.collectors.baostock import BaostockCalendarCollector
+
+        other = BaostockCalendarCollector(archive_root=archive_root)
+        # Compare overlapping window (default last ~2y if start omitted)
+        chk_start = start or date(end.year - 2, 1, 1)
+        other_batch = await other.collect(end, start=chk_start, end=end)
+        other_df = CalendarNormalizer().normalize(other_batch, start=chk_start, end=end)
+        a = open_dates(df.filter(pl.col("trade_date") >= chk_start))
+        b = open_dates(other_df)
+        only_a = sorted(a - b)
+        only_b = sorted(b - a)
+        if only_a or only_b:
+            print(
+                f"calendar dual-check WARN: akshare_only={len(only_a)} "
+                f"baostock_only={len(only_b)} window=[{chk_start}, {end}]"
+            )
+            if only_a[:5]:
+                print(f"  akshare_only sample: {only_a[:5]}")
+            if only_b[:5]:
+                print(f"  baostock_only sample: {only_b[:5]}")
+        else:
+            print(f"calendar dual-check OK: open_days={len(a)} window=[{chk_start}, {end}]")
+
+    if load and df.height:
+        _load_calendar(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
+
+
 async def _ingest_prices(
     *,
     symbols: list[str],
@@ -275,6 +362,18 @@ def _replay_normalize(raw_path: Path, *, load: bool, dataset: str) -> None:
         if load and df.height:
             source = str(df["source"][0]) if "source" in df.columns else "archive"
             _load_industry(df, source=source, raw_path=raw_path, target_date=date.today())
+        return
+
+    if dataset == "trading_calendar":
+        from quantagent.data.normalizers.calendar import CalendarNormalizer
+
+        df = CalendarNormalizer().normalize_from_archive(raw_path)
+        print(f"replayed calendar normalize path={raw_path} rows={df.height}")
+        if df.height:
+            print(df.head(5))
+        if load and df.height:
+            source = str(df["source"][0]) if "source" in df.columns else "archive"
+            _load_calendar(df, source=source, raw_path=raw_path, target_date=date.today())
         return
 
     from quantagent.data.normalizers.price import PriceNormalizer
@@ -497,7 +596,13 @@ def main(argv: list[str] | None = None) -> int:
     ingest.add_argument("--daily", action="store_true", help="Use today as start/end")
     ingest.add_argument(
         "--dataset",
-        choices=("price_daily", "financial_statement", "index", "security_industry"),
+        choices=(
+            "price_daily",
+            "financial_statement",
+            "index",
+            "security_industry",
+            "trading_calendar",
+        ),
         default="price_daily",
         help="Dataset to ingest (default: price_daily)",
     )
@@ -518,6 +623,11 @@ def main(argv: list[str] | None = None) -> int:
         "--load",
         action="store_true",
         help="Validate and write into Postgres",
+    )
+    ingest.add_argument(
+        "--dual-check",
+        action="store_true",
+        help="For trading_calendar: compare akshare vs baostock open days",
     )
     ingest.add_argument(
         "--universe",
@@ -741,6 +851,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ingest universe={cfg.code} symbols={len(symbols)}")
         elif args.symbols:
             symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+
+        if args.dataset == "trading_calendar":
+            end = args.end or date.today()
+            start = args.start
+            if args.daily:
+                start = end = date.today()
+            asyncio.run(
+                _ingest_calendar(
+                    start=start,
+                    end=end,
+                    source=args.source,
+                    archive_root=args.archive_root,
+                    load=args.load,
+                    dual_check=bool(args.dual_check),
+                )
+            )
+            return 0
 
         if args.dataset == "security_industry":
             if args.source != "akshare":

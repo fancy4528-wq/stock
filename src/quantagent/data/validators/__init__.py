@@ -10,6 +10,7 @@ from sqlalchemy import Connection, bindparam, create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 
+from quantagent.data.validators.calendar import CALENDAR_RULES
 from quantagent.data.validators.financial import FINANCIAL_STATEMENT_RULES
 from quantagent.data.validators.industry import INDUSTRY_RULES
 from quantagent.data.validators.price import PRICE_DAILY_RULES
@@ -65,6 +66,8 @@ class Validator:
             rules = FINANCIAL_STATEMENT_RULES
         elif dataset == "security_industry":
             rules = INDUSTRY_RULES
+        elif dataset == "trading_calendar":
+            rules = CALENDAR_RULES
         else:
             raise DataQualityError(f"No validator registered for dataset={dataset!r}")
 

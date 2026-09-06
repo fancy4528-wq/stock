@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from quantagent.reporting.pipeline import run_daily_pipeline
@@ -15,17 +15,20 @@ async def daily_report_job(
     as_of: date | None = None,
     synthetic: bool = True,
     universe_code: str = "mvp_cn_50",
+    market: str = "CN",
 ) -> Path:
     """Run daily report pipeline (synthetic demo or live PIT)."""
-    # Default: previous calendar day; live path snaps to last trade date in DB
-    day = as_of or (date.today() - timedelta(days=1))
+    if as_of is None:
+        from quantagent.core.calendar import TradingCalendar
+
+        as_of = TradingCalendar(market).default_as_of()
     path = await run_daily_pipeline(
-        as_of=day,
+        as_of=as_of,
         out_dir=out_dir,
         shadow_dir=shadow_dir,
         synthetic=synthetic,
         universe_code=universe_code,
     )
     mode = "synthetic" if synthetic else "live"
-    print(f"daily_report_job wrote {path} (mode={mode})")
+    print(f"daily_report_job wrote {path} (mode={mode} as_of={as_of})")
     return path
