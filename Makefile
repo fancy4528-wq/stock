@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate backtest backtest-baseline test-sentinel report test lint smoke
+.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -29,6 +29,9 @@ features:       ## 列出 MVP 因子
 
 evaluate:       ## 因子 IC/分层评估（默认 synthetic demo → docs/factor-reports）
 	uv run python -m quantagent.cli evaluate --synthetic --out docs/factor-reports
+
+portfolio:      ## 等权 Top-N + 风控 demo（synthetic，无 DB）
+	uv run python -m quantagent.cli portfolio --market CN
 
 backtest-baseline: ## 跑沪深300 Buy&Hold 基线并写入 docs/baseline-results.md
 	uv run python -m quantagent.cli backtest --strategy buy_and_hold --symbol 000300.SH --start 2015-01-01 --write-baseline docs/baseline-results.md
