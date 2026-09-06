@@ -135,6 +135,27 @@ def _load_financials(df: object, *, source: str, raw_path: Path | None, target_d
     )
 
 
+def _load_industry(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
+    import polars as pl
+
+    from quantagent.data.loaders import IndustryLoader
+
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
+    result = IndustryLoader().load(
+        df,
+        source=source,
+        raw_path=raw_path,
+        target_date=target_date,
+        snapshot_date=target_date,
+    )
+    print(
+        f"loaded industry batch_id={result['batch_id']} rows={result['rows_loaded']} "
+        f"industries={result['industries_upserted']} "
+        f"memberships={result['memberships_applied']} status={result['status']}"
+    )
+
+
 async def _ingest_prices(
     *,
     symbols: list[str],
@@ -198,6 +219,39 @@ async def _ingest_financials(
         _load_financials(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
 
 
+async def _ingest_industry(
+    *,
+    symbols: list[str] | None,
+    end: date,
+    archive_root: Path | None,
+    load: bool,
+) -> None:
+    import polars as pl
+
+    from quantagent.data.collectors.akshare import AkshareIndustryCollector
+    from quantagent.data.normalizers.industry import IndustryNormalizer
+
+    collector = AkshareIndustryCollector(archive_root=archive_root)
+    kwargs: dict[str, object] = {}
+    if symbols:
+        kwargs["symbols"] = symbols
+    batch = await collector.collect(end, **kwargs)
+    df = IndustryNormalizer().normalize(batch)
+    n_ind = int(df.filter(pl.col("record_type") == "industry").height) if df.height else 0
+    n_mem = int(df.filter(pl.col("record_type") == "membership").height) if df.height else 0
+    print(
+        f"collected source={batch.source} dataset={batch.dataset} batch_id={batch.batch_id} "
+        f"rows_raw={batch.row_count} industries={n_ind} memberships={n_mem} path={batch.raw_path}"
+    )
+    if n_mem:
+        preview = df.filter(pl.col("record_type") == "membership").select(
+            ["symbol", "industry_code", "industry_name", "level", "valid_from"]
+        )
+        print(preview.head(5))
+    if load and df.height:
+        _load_industry(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
+
+
 def _replay_normalize(raw_path: Path, *, load: bool, dataset: str) -> None:
     if dataset == "financial_statement":
         from quantagent.data.normalizers.financial import FinancialNormalizer
@@ -209,6 +263,18 @@ def _replay_normalize(raw_path: Path, *, load: bool, dataset: str) -> None:
         if load and df.height:
             source = str(df["source"][0]) if "source" in df.columns else "archive"
             _load_financials(df, source=source, raw_path=raw_path, target_date=date.today())
+        return
+
+    if dataset == "security_industry":
+        from quantagent.data.normalizers.industry import IndustryNormalizer
+
+        df = IndustryNormalizer().normalize_from_archive(raw_path)
+        print(f"replayed industry normalize path={raw_path} rows={df.height}")
+        if df.height:
+            print(df.head(5))
+        if load and df.height:
+            source = str(df["source"][0]) if "source" in df.columns else "archive"
+            _load_industry(df, source=source, raw_path=raw_path, target_date=date.today())
         return
 
     from quantagent.data.normalizers.price import PriceNormalizer
@@ -431,7 +497,7 @@ def main(argv: list[str] | None = None) -> int:
     ingest.add_argument("--daily", action="store_true", help="Use today as start/end")
     ingest.add_argument(
         "--dataset",
-        choices=("price_daily", "financial_statement", "index"),
+        choices=("price_daily", "financial_statement", "index", "security_industry"),
         default="price_daily",
         help="Dataset to ingest (default: price_daily)",
     )
@@ -675,7 +741,29 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ingest universe={cfg.code} symbols={len(symbols)}")
         elif args.symbols:
             symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
-        else:
+
+        if args.dataset == "security_industry":
+            if args.source != "akshare":
+                print(
+                    "security_industry ingest currently supports --source akshare only",
+                    file=sys.stderr,
+                )
+                return 2
+            end = args.end or date.today()
+            # symbols/universe optional: omit → full market L1 memberships
+            if not symbols and not args.universe and not args.symbols:
+                print("ingest industry: no symbol filter (full L1 memberships)")
+            asyncio.run(
+                _ingest_industry(
+                    symbols=symbols or None,
+                    end=end,
+                    archive_root=args.archive_root,
+                    load=args.load,
+                )
+            )
+            return 0
+
+        if not symbols:
             print(
                 "ingest requires --symbols, --universe, or --from-archive",
                 file=sys.stderr,
