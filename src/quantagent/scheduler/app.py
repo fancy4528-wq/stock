@@ -137,21 +137,35 @@ async def run_once(
 
 
 def run_scheduler_blocking(**kwargs: Any) -> None:
-    """Start scheduler and block (Ctrl+C to stop)."""
+    """Start scheduler and block (Ctrl+C to stop).
+
+    ``AsyncIOScheduler`` requires a running event loop before ``start()``, so
+    we drive everything under ``asyncio.run``.
+    """
     sched = build_scheduler(**kwargs)
-    sched.start()
     synthetic = bool(kwargs.get("synthetic", False))
     mode = "synthetic" if synthetic else "live"
     cfg = load_scheduler_config(str(kwargs.get("market", "CN")))
     hh = kwargs.get("hour", cfg.daily_live.cron.hour)
     mm = kwargs.get("minute", cfg.daily_live.cron.minute)
-    print(
-        f"scheduler started ({mode}): cn_daily_live cron daily "
-        f"{hh:02d}:{mm:02d} {cfg.timezone} "
-        f"(skips non-trading days via trading_calendar; "
-        f"live chain=ingest→seed→report)"
-    )
+
+    async def _serve() -> None:
+        sched.start()
+        print(
+            f"scheduler started ({mode}): cn_daily_live cron daily "
+            f"{hh:02d}:{mm:02d} {cfg.timezone} "
+            f"(skips non-trading days via trading_calendar; "
+            f"live chain=ingest→seed→report)",
+            flush=True,
+        )
+        try:
+            # Block until Ctrl+C cancels the asyncio.run task.
+            await asyncio.Future()
+        finally:
+            if sched.running:
+                sched.shutdown(wait=False)
+
     try:
-        asyncio.get_event_loop().run_forever()
+        asyncio.run(_serve())
     except (KeyboardInterrupt, SystemExit):
-        sched.shutdown(wait=False)
+        print("scheduler stopped")
