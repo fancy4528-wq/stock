@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report report-live schedule schedule-live seed-universe test lint smoke
+.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report report-live schedule schedule-live seed-universe ingest-industry test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -26,6 +26,9 @@ seed-universe: ## 写入 mvp_cn_50 universe_snapshot（需 security 已有标的
 
 ingest-daily:   ## 每日增量采集
 	uv run python -m quantagent.cli ingest --daily
+
+ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 过滤）
+	uv run python -m quantagent.cli ingest --dataset security_industry --universe mvp_cn_50 --load --source akshare
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN
