@@ -30,6 +30,11 @@ def _clean_frame() -> pl.DataFrame:
             "amount": [104_000_000.0, 115_000_000.0],
             "turnover_rate": [0.01, 0.011],
             "source": ["baostock", "baostock"],
+            "limit_up_px": [110.0, 114.4],
+            "limit_down_px": [90.0, 93.6],
+            "is_limit_up": [False, False],
+            "is_limit_down": [False, False],
+            "is_suspended": [False, False],
         }
     )
 
@@ -73,6 +78,46 @@ def test_price_loader_upsert_and_pit_read(clean_pit_tables: Engine) -> None:
         adjust="qfq",
     )
     assert prices.height == 2
+
+    with engine.connect() as conn:
+        flags = conn.execute(
+            text(
+                """
+                SELECT is_limit_up, is_limit_down, is_suspended, limit_up_px
+                FROM price_daily
+                ORDER BY trade_date
+                """
+            )
+        ).fetchall()
+    assert flags[0] == (False, False, False, 110.0)
+    assert flags[1][2] is False
+
+
+def test_price_loader_persists_limit_up_flag(clean_pit_tables: Engine) -> None:
+    engine = clean_pit_tables
+    frame = _clean_frame().with_columns(
+        pl.Series("close", [110.0, 105.0]),
+        pl.Series("high", [110.0, 106.0]),
+        pl.Series("is_limit_up", [True, False]),
+        pl.Series("limit_up_px", [110.0, 114.4]),
+    )
+    result = PriceLoader(engine).load(
+        frame,
+        source="baostock",
+        target_date=date(2026, 9, 2),
+    )
+    assert result["status"] == "success"
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT is_limit_up, limit_up_px
+                FROM price_daily
+                WHERE trade_date = DATE '2026-09-01'
+                """
+            )
+        ).one()
+    assert row == (True, 110.0)
 
 
 def test_price_loader_rejects_bad_ohlc(clean_pit_tables: Engine) -> None:

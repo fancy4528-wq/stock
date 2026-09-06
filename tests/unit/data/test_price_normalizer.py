@@ -10,7 +10,12 @@ import pytest
 
 from quantagent.data.archive.parquet import ParquetArchive, load_raw_batch
 from quantagent.data.contracts import RawBatch
-from quantagent.data.normalizers.price import CANONICAL_PRICE_COLUMNS, PriceNormalizer
+from quantagent.data.normalizers.price import (
+    CANONICAL_PRICE_COLUMNS,
+    PriceNormalizer,
+    infer_board,
+    round_limit_price,
+)
 
 
 def _akshare_raw() -> pl.DataFrame:
@@ -25,6 +30,7 @@ def _akshare_raw() -> pl.DataFrame:
             "成交量": [1000, 2000],  # 手
             "成交额": [168_800_000.0, 340_000_000.0],
             "换手率": [0.50, 1.00],  # %
+            "涨跌幅": [0.776, 0.711],  # % vs prev
             "_request_symbol": ["600519", "600519"],
         }
     )
@@ -43,6 +49,8 @@ def _baostock_raw() -> pl.DataFrame:
             "volume": ["100000", "200000"],  # 股
             "amount": ["168800000.000", "340000000.000"],
             "turn": ["0.500000", "1.000000"],
+            "tradestatus": ["1", "1"],
+            "isST": ["0", "0"],
         }
     )
 
@@ -63,6 +71,8 @@ def test_normalize_akshare_units_and_symbol(tmp_path: Path) -> None:
     assert out["volume"].to_list() == [100_000, 200_000]
     assert out["turnover_rate"].to_list() == pytest.approx([0.005, 0.01])
     assert out["source"].to_list() == ["akshare", "akshare"]
+    assert out["is_suspended"].to_list() == [False, False]
+    assert out["is_limit_up"].to_list() == [False, False]
 
 
 def test_normalize_baostock(tmp_path: Path) -> None:
@@ -80,6 +90,105 @@ def test_normalize_baostock(tmp_path: Path) -> None:
     assert out["volume"].to_list() == [100_000, 200_000]
     assert out["prev_close"].to_list() == [1675.0, 1688.0]
     assert out["turnover_rate"].to_list() == pytest.approx([0.005, 0.01])
+    assert out["limit_up_px"].to_list() == [
+        round_limit_price(1675.0 * 1.1),
+        round_limit_price(1688.0 * 1.1),
+    ]
+
+
+def test_baostock_limit_up_and_suspend(tmp_path: Path) -> None:
+    raw = pl.DataFrame(
+        {
+            "date": ["2024-01-02", "2024-01-03"],
+            "code": ["sz.000001", "sz.000001"],
+            "open": ["10.000", "11.000"],
+            "high": ["11.000", "11.000"],
+            "low": ["10.000", "11.000"],
+            "close": ["11.000", "11.000"],
+            "preclose": ["10.000", "11.000"],
+            "volume": ["100000", "0"],
+            "amount": ["1100000.000", "0.000"],
+            "turn": ["1.000000", "0.000000"],
+            "tradestatus": ["1", "0"],
+            "isST": ["0", "0"],
+        }
+    )
+    archive = ParquetArchive(tmp_path)
+    batch = archive.write(
+        raw,
+        source="baostock",
+        dataset="price_daily",
+        target_date=date(2024, 1, 3),
+        meta={"symbols": ["000001.SZ"]},
+        collected_at=datetime(2024, 1, 3, 8, 0, tzinfo=UTC),
+    )
+    out = PriceNormalizer().normalize(batch)
+    assert out["is_limit_up"].to_list() == [True, False]
+    assert out["is_suspended"].to_list() == [False, True]
+    assert out["limit_up_px"][0] == pytest.approx(11.0)
+
+
+def test_star_board_20pct_limit(tmp_path: Path) -> None:
+    raw = pl.DataFrame(
+        {
+            "date": ["2024-01-02"],
+            "code": ["sh.688001"],
+            "open": ["100.000"],
+            "high": ["120.000"],
+            "low": ["100.000"],
+            "close": ["120.000"],
+            "preclose": ["100.000"],
+            "volume": ["1000"],
+            "amount": ["120000.000"],
+            "turn": ["1.000000"],
+            "tradestatus": ["1"],
+            "isST": ["0"],
+        }
+    )
+    archive = ParquetArchive(tmp_path)
+    batch = archive.write(
+        raw,
+        source="baostock",
+        dataset="price_daily",
+        target_date=date(2024, 1, 2),
+        meta={"symbols": ["688001.SH"]},
+        collected_at=datetime(2024, 1, 2, 8, 0, tzinfo=UTC),
+    )
+    out = PriceNormalizer().normalize(batch)
+    assert infer_board("688001.SH") == "star"
+    assert out["limit_up_px"][0] == pytest.approx(120.0)
+    assert out["is_limit_up"][0] is True
+
+
+def test_st_5pct_limit(tmp_path: Path) -> None:
+    raw = pl.DataFrame(
+        {
+            "date": ["2024-01-02"],
+            "code": ["sh.600000"],
+            "open": ["10.000"],
+            "high": ["10.500"],
+            "low": ["10.000"],
+            "close": ["10.500"],
+            "preclose": ["10.000"],
+            "volume": ["1000"],
+            "amount": ["10500.000"],
+            "turn": ["1.000000"],
+            "tradestatus": ["1"],
+            "isST": ["1"],
+        }
+    )
+    archive = ParquetArchive(tmp_path)
+    batch = archive.write(
+        raw,
+        source="baostock",
+        dataset="price_daily",
+        target_date=date(2024, 1, 2),
+        meta={"symbols": ["600000.SH"]},
+        collected_at=datetime(2024, 1, 2, 8, 0, tzinfo=UTC),
+    )
+    out = PriceNormalizer().normalize(batch)
+    assert out["limit_up_px"][0] == pytest.approx(10.5)
+    assert out["is_limit_up"][0] is True
 
 
 def test_replay_from_archive(tmp_path: Path) -> None:

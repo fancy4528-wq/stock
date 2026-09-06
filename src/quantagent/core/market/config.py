@@ -27,6 +27,45 @@ class PriceLimitConfig(BaseModel):
     enabled: bool = True
     rules: list[PriceLimitRule] = Field(default_factory=list)
 
+    def for_security(
+        self, *, board: str, is_st: bool = False
+    ) -> tuple[float | None, float | None]:
+        """Return ``(limit_up, limit_down)`` ratios for the first matching rule.
+
+        ``None`` means no limit (e.g. IPO open days). Ratios are signed the same
+        way as ``config/markets/cn.yaml`` (up positive, down negative).
+        """
+        if not self.enabled:
+            return None, None
+        for rule in self.rules:
+            if _match_limit_condition(rule.condition, board=board, is_st=is_st):
+                return rule.limit_up, rule.limit_down
+        raise ConfigError(f"No matching price limit rule for board={board!r} is_st={is_st}")
+
+
+def _match_limit_condition(condition: str, *, board: str, is_st: bool) -> bool:
+    """Match a small, explicit subset of condition expressions from market YAML."""
+    raw = condition.strip()
+    if raw == "default":
+        return True
+    if raw == "is_st":
+        return is_st
+    # board == 'star'  /  board == "gem"
+    if raw.startswith("board ==") or raw.startswith("board=="):
+        token = raw.split("==", 1)[1].strip().strip("'\"")
+        return board == token
+    # board in ['star','gem']
+    if raw.startswith("board in"):
+        inside = raw.split("in", 1)[1].strip()
+        if inside.startswith("[") and inside.endswith("]"):
+            items = [
+                part.strip().strip("'\"")
+                for part in inside[1:-1].split(",")
+                if part.strip()
+            ]
+            return board in items
+    return False
+
 
 class FeeConfig(BaseModel):
     commission_rate: float = 0.0
@@ -84,6 +123,11 @@ class MarketConfig(BaseModel):
 
     def lot_increment(self, board: str = "main") -> int:
         return int(self.lot_increment_by_board.get(board, self.min_lot_buy))
+
+    def price_limits(
+        self, *, board: str, is_st: bool = False
+    ) -> tuple[float | None, float | None]:
+        return self.price_limit.for_security(board=board, is_st=is_st)
 
     def estimate_fees(self, *, side: str, notional: float, quantity: float) -> float:
         """Commission + stamp + transfer for one fill (CN-style)."""
