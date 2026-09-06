@@ -118,9 +118,7 @@ async def _ingest_financials(
         f"rows_raw={batch.row_count} rows_norm={df.height} path={batch.raw_path}"
     )
     if df.height:
-        preview = df.select(
-            ["symbol", "period_end", "period_type", "announced_at", "net_profit"]
-        )
+        preview = df.select(["symbol", "period_end", "period_type", "announced_at", "net_profit"])
         print(preview.head(5))
     if load and df.height:
         _load_financials(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
@@ -165,9 +163,7 @@ def _run_backtest(
 
     from quantagent.backtest import BuyAndHoldConfig, BuyAndHoldEngine
 
-    result = BuyAndHoldEngine().run(
-        BuyAndHoldConfig(symbol=symbol, start=start, end=end)
-    )
+    result = BuyAndHoldEngine().run(BuyAndHoldConfig(symbol=symbol, start=start, end=end))
     m = result.metrics
     print(
         f"backtest strategy={result.strategy} symbol={result.symbol}\n"
@@ -252,13 +248,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     bt.add_argument("--market", default=None)
 
-    for name, help_text in (
-        ("features", "Compute features (not yet implemented)"),
-        ("report", "Generate daily report (not yet implemented)"),
-    ):
-        p = sub.add_parser(name, help=help_text)
-        p.add_argument("--market", default=None)
-        p.add_argument("--strategy", default=None)
+    feat = sub.add_parser("features", help="List / describe MVP factors (W5)")
+    feat.add_argument("--market", default="CN")
+    feat.add_argument(
+        "--list",
+        action="store_true",
+        default=True,
+        help="Print registered MVP factor codes (default)",
+    )
+
+    report = sub.add_parser("report", help="Generate daily report (not yet implemented)")
+    report.add_argument("--market", default=None)
+    report.add_argument("--strategy", default=None)
 
     args = parser.parse_args(argv)
 
@@ -274,6 +275,17 @@ def main(argv: list[str] | None = None) -> int:
             end=args.end,
             write_baseline=args.write_baseline,
         )
+
+    if args.command == "features":
+        from quantagent.quant.features import MVP_FACTORS
+
+        print(f"market={args.market} mvp_factors={len(MVP_FACTORS)}")
+        for code, factor in MVP_FACTORS.items():
+            print(
+                f"  {code:24s}  category={factor.category:12s}  "
+                f"lookback={factor.lookback_days:3d}  v={factor.version}  - {factor.name}"
+            )
+        return 0
 
     if args.command == "ingest":
         if args.from_archive is not None:
