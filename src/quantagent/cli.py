@@ -33,6 +33,70 @@ def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
+def _run_evaluate(
+    *,
+    market: str,
+    panel_path: Path | None,
+    factors_arg: str | None,
+    synthetic: bool,
+    horizon: int,
+    n_quantiles: int,
+    out_dir: Path,
+) -> int:
+    import polars as pl
+
+    from quantagent.quant.evaluation import (
+        evaluate_factors,
+        synthetic_eval_panel,
+        write_factor_reports,
+    )
+
+    if synthetic or panel_path is None:
+        if panel_path is not None:
+            print("evaluate: ignoring --panel because --synthetic was set", file=sys.stderr)
+        panel = synthetic_eval_panel()
+        factor_cols = ["good_factor", "noise_factor"]
+        print(f"market={market} mode=synthetic rows={panel.height}")
+    else:
+        panel = pl.read_parquet(panel_path)
+        skip = {
+            "security_id",
+            "symbol",
+            "trade_date",
+            "close",
+            "open",
+            "high",
+            "low",
+            "volume",
+            "amount",
+            "turnover_rate",
+        }
+        if factors_arg:
+            factor_cols = [c.strip() for c in factors_arg.split(",") if c.strip()]
+        else:
+            factor_cols = [c for c in panel.columns if c not in skip and not c.startswith("fwd_")]
+        if not factor_cols:
+            print("evaluate: no factor columns found in panel", file=sys.stderr)
+            return 2
+        print(f"market={market} mode=parquet rows={panel.height} factors={factor_cols}")
+
+    results = evaluate_factors(
+        panel,
+        factor_cols,
+        horizon=horizon,
+        n_quantiles=n_quantiles,
+    )
+    paths = write_factor_reports(results, out_dir)
+    for code, r in results.items():
+        status = "PASS" if r.admission_pass else "FAIL"
+        print(
+            f"  {code:24s}  ic={r.ic_mean:+.4f}  icir={r.icir:+.3f}  "
+            f"t={r.ic_t_stat:+.2f}  admission={status}"
+        )
+    print(f"wrote {len(paths)} files under {out_dir}")
+    return 0
+
+
 def _load_prices(df, *, source: str, raw_path: Path | None, target_date: date) -> None:
     from quantagent.data.loaders import PriceLoader
 
@@ -257,6 +321,36 @@ def main(argv: list[str] | None = None) -> int:
         help="Print registered MVP factor codes (default)",
     )
 
+    ev = sub.add_parser(
+        "evaluate",
+        help="Factor IC / quantile evaluation + markdown reports (W6)",
+    )
+    ev.add_argument("--market", default="CN")
+    ev.add_argument(
+        "--panel",
+        type=Path,
+        default=None,
+        help="Parquet panel with trade_date, close, and factor columns",
+    )
+    ev.add_argument(
+        "--factors",
+        default=None,
+        help="Comma-separated factor columns (default: all non-price cols, or demo)",
+    )
+    ev.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Evaluate built-in synthetic panel (no DB; writes demo reports)",
+    )
+    ev.add_argument("--horizon", type=int, default=5, help="Forward-return horizon (days)")
+    ev.add_argument("--quantiles", type=int, default=5)
+    ev.add_argument(
+        "--out",
+        type=Path,
+        default=Path("docs/factor-reports"),
+        help="Directory for markdown reports",
+    )
+
     report = sub.add_parser("report", help="Generate daily report (not yet implemented)")
     report.add_argument("--market", default=None)
     report.add_argument("--strategy", default=None)
@@ -286,6 +380,17 @@ def main(argv: list[str] | None = None) -> int:
                 f"lookback={factor.lookback_days:3d}  v={factor.version}  - {factor.name}"
             )
         return 0
+
+    if args.command == "evaluate":
+        return _run_evaluate(
+            market=args.market,
+            panel_path=args.panel,
+            factors_arg=args.factors,
+            synthetic=args.synthetic,
+            horizon=args.horizon,
+            n_quantiles=args.quantiles,
+            out_dir=args.out,
+        )
 
     if args.command == "ingest":
         if args.from_archive is not None:
