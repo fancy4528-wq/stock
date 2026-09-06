@@ -189,8 +189,10 @@ async def _ingest_calendar(
 ) -> None:
     import polars as pl
 
+    from quantagent.data.collectors.base import Collector
     from quantagent.data.normalizers.calendar import CalendarNormalizer, open_dates
 
+    collector: Collector
     if source == "akshare":
         from quantagent.data.collectors.akshare import AkshareCalendarCollector
 
@@ -211,9 +213,11 @@ async def _ingest_calendar(
         f"rows_raw={batch.row_count} dense={df.height} open_days={n_open} path={batch.raw_path}"
     )
     if df.height:
-        print(df.filter(pl.col("is_open")).select(
-            ["trade_date", "is_open", "prev_trade_date", "next_trade_date"]
-        ).tail(5))
+        print(
+            df.filter(pl.col("is_open"))
+            .select(["trade_date", "is_open", "prev_trade_date", "next_trade_date"])
+            .tail(5)
+        )
 
     if dual_check and source == "akshare":
         from quantagent.data.collectors.baostock import BaostockCalendarCollector
@@ -536,6 +540,8 @@ def _run_schedule(
     shadow_dir: Path,
     synthetic: bool,
     universe: str,
+    skip_ingest: bool = False,
+    skip_seed: bool = False,
 ) -> int:
     if once:
         from quantagent.scheduler.app import run_once
@@ -547,6 +553,8 @@ def _run_schedule(
                 shadow_dir=shadow_dir,
                 synthetic=synthetic,
                 universe_code=universe,
+                skip_ingest=skip_ingest,
+                skip_seed=skip_seed,
             )
         )
         print(f"schedule --once wrote {path}")
@@ -559,6 +567,33 @@ def _run_schedule(
         shadow_dir=shadow_dir,
         synthetic=synthetic,
         universe_code=universe,
+        skip_ingest=skip_ingest,
+        skip_seed=skip_seed,
+    )
+    return 0
+
+
+def _run_ingest_daily(
+    *,
+    universe: str,
+    as_of: date | None,
+    source: str,
+    lookback_sessions: int,
+) -> int:
+    from quantagent.data.ops import refresh_daily_market_data
+
+    result = asyncio.run(
+        refresh_daily_market_data(
+            as_of=as_of,
+            universe_code=universe,
+            price_source=source,
+            lookback_sessions=lookback_sessions,
+        )
+    )
+    print(
+        f"ingest-daily done as_of={result.as_of} symbols={result.n_symbols} "
+        f"price_rows={result.price_rows} index_rows={result.index_rows} "
+        f"seeded={result.n_seeded} missing={len(result.missing)}"
     )
     return 0
 
@@ -730,19 +765,59 @@ def main(argv: list[str] | None = None) -> int:
         help="Build report from PITRepository (requires ingest + seed-universe)",
     )
 
-    sched = sub.add_parser("schedule", help="APScheduler daily report (W8)")
+    sched = sub.add_parser(
+        "schedule",
+        help="APScheduler daily live pipeline (ingest→seed→report; A4)",
+    )
     sched.add_argument(
         "--once",
         action="store_true",
-        help="Run the daily report job once and exit",
+        help="Run one pipeline iteration and exit",
     )
     sched.add_argument("--as-of", type=_parse_date, default=None)
     sched.add_argument("--out", type=Path, default=Path("docs/daily-reports"))
     sched.add_argument("--shadow-dir", type=Path, default=Path("data/shadow"))
     sched.add_argument("--universe", default="mvp_cn_50")
+    sched.add_argument(
+        "--skip-ingest",
+        action="store_true",
+        help="Live mode: skip price/index refresh (report+seed only)",
+    )
+    sched.add_argument(
+        "--skip-seed",
+        action="store_true",
+        help="Live mode: skip universe_snapshot seed",
+    )
     sched_mode = sched.add_mutually_exclusive_group()
-    sched_mode.add_argument("--synthetic", action="store_true", help="Synthetic job (default)")
-    sched_mode.add_argument("--live", action="store_true", help="Live PIT job")
+    sched_mode.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Synthetic report-only job (no ingest)",
+    )
+    sched_mode.add_argument(
+        "--live",
+        action="store_true",
+        help="Live chain (default): ingest→seed→report",
+    )
+
+    ingest_daily = sub.add_parser(
+        "ingest-daily",
+        help="Incremental universe+index ingest and seed (A4 refresh step)",
+    )
+    ingest_daily.add_argument("--universe", default="mvp_cn_50")
+    ingest_daily.add_argument("--as-of", type=_parse_date, default=None)
+    ingest_daily.add_argument(
+        "--source",
+        choices=("akshare", "baostock"),
+        default="baostock",
+        help="Equity price source (index always uses akshare)",
+    )
+    ingest_daily.add_argument(
+        "--lookback-sessions",
+        type=int,
+        default=3,
+        help="How many sessions to re-pull (default 3)",
+    )
 
     seed_u = sub.add_parser(
         "seed-universe",
@@ -824,14 +899,24 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "schedule":
-        synthetic = not bool(args.live)
+        # Default to live (A4). Pass --synthetic for demo-only report.
         return _run_schedule(
             once=args.once,
             as_of=args.as_of,
             out_dir=args.out,
             shadow_dir=args.shadow_dir,
-            synthetic=synthetic,
+            synthetic=bool(args.synthetic),
             universe=args.universe,
+            skip_ingest=bool(args.skip_ingest),
+            skip_seed=bool(args.skip_seed),
+        )
+
+    if args.command == "ingest-daily":
+        return _run_ingest_daily(
+            universe=args.universe,
+            as_of=args.as_of,
+            source=args.source,
+            lookback_sessions=args.lookback_sessions,
         )
 
     if args.command == "ingest":

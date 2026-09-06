@@ -1,11 +1,19 @@
-# CN daily scheduler (P1)
+# CN daily live scheduler (Gate 1 / Sprint A4)
+#
+# Hang with:  make schedule-live-hang
+# Once with:  make schedule-live
 
 timezone: Asia/Shanghai
-jobs:
-  daily_report:
-    cron:
-      day_of_week: mon-fri
-      hour: 18
-      minute: 0
-    out_dir: docs/daily-reports
-    shadow_dir: data/shadow
+market: CN
+
+daily_live:
+  cron:
+    hour: 18
+    minute: 0
+  out_dir: docs/daily-reports
+  shadow_dir: data/shadow
+  universe: mvp_cn_50
+  # baostock is more stable than akshare Eastmoney for daily bars
+  price_source: baostock
+  # pull a few prior sessions so delayed source bars still land
+  lookback_sessions: 3
