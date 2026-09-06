@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report report-live schedule schedule-live seed-universe ingest-industry ingest-calendar test lint smoke
+.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -24,8 +24,8 @@ ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
 seed-universe: ## 写入 mvp_cn_50 universe_snapshot（需 security 已有标的）
 	uv run python -m quantagent.cli seed-universe --universe mvp_cn_50 --as-of $$(date +%F)
 
-ingest-daily:   ## 每日增量采集
-	uv run python -m quantagent.cli ingest --daily
+ingest-daily:   ## 每日增量：宇宙行情+沪深300 + seed snapshot（A4）
+	uv run python -m quantagent.cli ingest-daily --universe mvp_cn_50 --source baostock
 
 ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 过滤）
 	uv run python -m quantagent.cli ingest --dataset security_industry --universe mvp_cn_50 --load --source akshare
@@ -57,11 +57,14 @@ report:         ## 生成日报（默认 synthetic；真实数据用 make report
 report-live:    ## 生成真实数据日报（PIT + Shadow）
 	uv run python -m quantagent.cli report --market CN --live --out docs/daily-reports --shadow-dir data/shadow
 
-schedule:       ## 跑一次调度任务（synthetic）
+schedule:       ## 跑一次调度（synthetic demo）
 	uv run python -m quantagent.cli schedule --once --synthetic
 
-schedule-live:  ## 跑一次真实数据调度任务
+schedule-live:  ## 跑一次 live 流水线（ingest→seed→report）
 	uv run python -m quantagent.cli schedule --once --live
+
+schedule-live-hang: ## 常驻挂 live 调度（每日 18:00，交易日跑；Ctrl+C 停）
+	uv run python -m quantagent.cli schedule --live
 
 test:           ## 跑全部测试
 	uv run pytest -v --cov=src/quantagent --cov-report=term-missing
