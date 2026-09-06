@@ -1,7 +1,8 @@
-"""Synthetic ReportBundle + end-to-end daily pipeline (no DB)."""
+"""Synthetic + live ReportBundle pipelines for daily reports."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -19,9 +20,12 @@ from quantagent.agents.tools.market import (
     SectorRow,
     ShadowStatusRow,
 )
+from quantagent.core.repository.pit import PITRepository
 from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine
+from quantagent.evaluation.shadow.types import ShadowDayRecord
 from quantagent.execution.broker.simulated import PriceBar
 from quantagent.reporting.daily import write_daily_report
+from quantagent.reporting.live import finalize_live_bundle, load_live_report_data
 
 
 def make_run_id(as_of: date, market: str = "CN") -> str:
@@ -136,36 +140,21 @@ def build_synthetic_bundle(
     )
 
 
-async def run_daily_pipeline(
-    *,
-    as_of: date | None = None,
-    market: str = "CN",
-    out_dir: Path | str = Path("docs/daily-reports"),
-    shadow_dir: Path | str = Path("data/shadow"),
-    synthetic: bool = True,
-    write_cost_log: bool = False,
-) -> Path:
-    """Shadow step -> ReporterAgent -> markdown. Synthetic-only for MVP CLI."""
-    as_of = as_of or (date.today() - timedelta(days=1))
-    run_id = make_run_id(as_of, market)
-    symbols = synthetic_universe(50)
-    bars = build_synthetic_bars(symbols, as_of)
-    scores = {sym: 1.0 - i * 0.01 for i, sym in enumerate(symbols)}
+def _shadow_notes(shadow_recs: list[ShadowDayRecord]) -> list[RiskNote]:
+    seen_unfilled: set[str] = set()
+    unfilled_notes: list[RiskNote] = []
+    for r in shadow_recs:
+        for u in r.unfilled:
+            key = f"{u['symbol']}:{u['reason']}"
+            if key in seen_unfilled:
+                continue
+            seen_unfilled.add(key)
+            unfilled_notes.append(RiskNote(text=f"未执行项：{u['symbol']} {u['reason']}"))
+    return unfilled_notes
 
-    engine = ShadowEngine(
-        shadow_dir,
-        cfg=ShadowConfig(baseline_n=50, factor_top_n=15),
-        code_version="dev",
-    )
-    engine.load_history_metrics()
-    shadow_recs = await engine.step(
-        as_of=as_of,
-        run_id=run_id,
-        bars=bars,
-        baseline_symbols=symbols,
-        factor_scores=scores,
-    )
-    shadow_rows = [
+
+def _shadow_rows_from_recs(shadow_recs: list[ShadowDayRecord]) -> list[ShadowStatusRow]:
+    return [
         ShadowStatusRow(
             portfolio=r.portfolio,
             ret_1d=r.ret_1d,
@@ -175,31 +164,95 @@ async def run_daily_pipeline(
         )
         for r in shadow_recs
     ]
-    seen_unfilled: set[str] = set()
-    unfilled_notes: list[RiskNote] = []
-    for r in shadow_recs:
-        for u in r.unfilled:
-            key = f"{u['symbol']}:{u['reason']}"
-            if key in seen_unfilled:
-                continue
-            seen_unfilled.add(key)
-            unfilled_notes.append(
-                RiskNote(text=f"未执行项：{u['symbol']} {u['reason']}")
-            )
 
-    if not synthetic:
-        raise NotImplementedError("live report pipeline requires DB ingest (post-MVP wiring)")
 
-    bundle = build_synthetic_bundle(
-        as_of,
-        run_id=run_id,
-        market=market,
-        shadow_rows=shadow_rows,
-        risk_notes=unfilled_notes or [RiskNote(text="当前回撤在阈值内（阈值 -15%）")],
-    )
+async def run_daily_pipeline(
+    *,
+    as_of: date | None = None,
+    market: str = "CN",
+    out_dir: Path | str = Path("docs/daily-reports"),
+    shadow_dir: Path | str = Path("data/shadow"),
+    synthetic: bool = True,
+    write_cost_log: bool = False,
+    universe_code: str = "mvp_cn_50",
+    repo: PITRepository | None = None,
+) -> Path:
+    """Shadow step -> ReporterAgent -> markdown (synthetic or live PIT)."""
     costs = CostTracker()
     agent = ReporterAgent(llm=NullLLMClient(), cost_tracker=costs)
-    ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
+
+    if synthetic:
+        as_of = as_of or (date.today() - timedelta(days=1))
+        run_id = make_run_id(as_of, market)
+        symbols = synthetic_universe(50)
+        bars = build_synthetic_bars(symbols, as_of)
+        scores = {sym: 1.0 - i * 0.01 for i, sym in enumerate(symbols)}
+        engine = ShadowEngine(
+            shadow_dir,
+            cfg=ShadowConfig(baseline_n=50, factor_top_n=15),
+            code_version="dev",
+        )
+        engine.load_history_metrics()
+        shadow_recs = await engine.step(
+            as_of=as_of,
+            run_id=run_id,
+            bars=bars,
+            baseline_symbols=symbols,
+            factor_scores=scores,
+        )
+        bundle = build_synthetic_bundle(
+            as_of,
+            run_id=run_id,
+            market=market,
+            shadow_rows=_shadow_rows_from_recs(shadow_recs),
+            risk_notes=_shadow_notes(shadow_recs)
+            or [RiskNote(text="当前回撤在阈值内（阈值 -15%）")],
+        )
+        ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
+    else:
+        pit = repo or PITRepository()
+        provisional = as_of or (date.today() - timedelta(days=1))
+        live = load_live_report_data(
+            pit,
+            as_of=provisional,
+            run_id=make_run_id(provisional, market),
+            market=market,
+            universe_code=universe_code,
+        )
+        as_of = live.as_of
+        run_id = make_run_id(as_of, market)
+        live = replace(
+            live,
+            run_id=run_id,
+            bundle_partial=live.bundle_partial.model_copy(
+                update={"as_of": as_of, "run_id": run_id}
+            ),
+        )
+        n = len(live.symbols)
+        n_scored = len(live.factor_scores)
+        engine = ShadowEngine(
+            shadow_dir,
+            cfg=ShadowConfig(
+                baseline_n=max(n, 1),
+                factor_top_n=min(15, max(n_scored, 1)),
+            ),
+            code_version="dev",
+        )
+        engine.load_history_metrics()
+        shadow_recs = await engine.step(
+            as_of=as_of,
+            run_id=run_id,
+            bars=live.bars,
+            baseline_symbols=live.symbols,
+            factor_scores=live.factor_scores,
+        )
+        bundle = finalize_live_bundle(
+            live,
+            shadow_rows=_shadow_rows_from_recs(shadow_recs),
+            risk_notes=_shadow_notes(shadow_recs),
+        )
+        ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
+
     report = await agent.run(ctx, bundle)
     out = Path(out_dir) / f"{as_of.isoformat()}.md"
     write_daily_report(report, bundle, out)

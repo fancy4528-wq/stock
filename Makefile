@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report schedule test lint smoke
+.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report report-live schedule schedule-live seed-universe test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -18,8 +18,11 @@ db-init:        ## 初始化数据库
 db-migrate:     ## 生成迁移
 	uv run alembic revision --autogenerate -m "$(MSG)"
 
-ingest-universe: ## 拉取 MVP 股票池数据
-	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01
+ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
+	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F) --load --source baostock
+
+seed-universe: ## 写入 mvp_cn_50 universe_snapshot（需 security 已有标的）
+	uv run python -m quantagent.cli seed-universe --universe mvp_cn_50 --as-of $$(date +%F)
 
 ingest-daily:   ## 每日增量采集
 	uv run python -m quantagent.cli ingest --daily
@@ -42,11 +45,17 @@ backtest:       ## 跑指定策略回测
 test-sentinel:  ## 跑未来函数哨兵（集成）
 	uv run pytest tests/integration/test_pit_sentinel.py tests/integration/test_backtest_sentinel.py -v
 
-report:         ## 生成日报（synthetic + Shadow，写入 docs/daily-reports）
+report:         ## 生成日报（默认 synthetic；真实数据用 make report-live）
 	uv run python -m quantagent.cli report --market CN --synthetic --out docs/daily-reports
 
-schedule:       ## 跑一次调度任务（等价 schedule --once）
-	uv run python -m quantagent.cli schedule --once
+report-live:    ## 生成真实数据日报（PIT + Shadow）
+	uv run python -m quantagent.cli report --market CN --live --out docs/daily-reports --shadow-dir data/shadow
+
+schedule:       ## 跑一次调度任务（synthetic）
+	uv run python -m quantagent.cli schedule --once --synthetic
+
+schedule-live:  ## 跑一次真实数据调度任务
+	uv run python -m quantagent.cli schedule --once --live
 
 test:           ## 跑全部测试
 	uv run pytest -v --cov=src/quantagent --cov-report=term-missing

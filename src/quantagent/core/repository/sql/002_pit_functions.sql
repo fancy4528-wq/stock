@@ -84,7 +84,10 @@ CREATE OR REPLACE FUNCTION get_prices_as_of(
     high NUMERIC,
     low NUMERIC,
     close NUMERIC,
+    prev_close NUMERIC,
     volume BIGINT,
+    amount NUMERIC,
+    turnover_rate NUMERIC,
     is_limit_up BOOLEAN,
     is_limit_down BOOLEAN,
     is_suspended BOOLEAN
@@ -115,7 +118,12 @@ CREATE OR REPLACE FUNCTION get_prices_as_of(
         p.close * COALESCE(
             CASE WHEN p_adjust = 'hfq' THEN f.factor_hfq ELSE f.factor_qfq END, 1
         ),
+        p.prev_close * COALESCE(
+            CASE WHEN p_adjust = 'hfq' THEN f.factor_hfq ELSE f.factor_qfq END, 1
+        ),
         p.volume,
+        p.amount,
+        p.turnover_rate,
         p.is_limit_up,
         p.is_limit_down,
         p.is_suspended

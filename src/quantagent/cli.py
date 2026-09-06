@@ -343,6 +343,7 @@ def _run_report(
     out_dir: Path,
     shadow_dir: Path,
     synthetic: bool,
+    universe: str,
 ) -> int:
     from quantagent.reporting.pipeline import run_daily_pipeline
 
@@ -354,23 +355,62 @@ def _run_report(
             shadow_dir=shadow_dir,
             synthetic=synthetic,
             write_cost_log=True,
+            universe_code=universe,
         )
     )
-    print(f"wrote {path}")
+    mode = "synthetic" if synthetic else "live"
+    print(f"wrote {path} (mode={mode})")
     return 0
 
 
-def _run_schedule(*, once: bool, as_of: date | None, out_dir: Path, shadow_dir: Path) -> int:
+def _run_schedule(
+    *,
+    once: bool,
+    as_of: date | None,
+    out_dir: Path,
+    shadow_dir: Path,
+    synthetic: bool,
+    universe: str,
+) -> int:
     if once:
         from quantagent.scheduler.app import run_once
 
-        path = asyncio.run(run_once(as_of=as_of, out_dir=out_dir, shadow_dir=shadow_dir))
+        path = asyncio.run(
+            run_once(
+                as_of=as_of,
+                out_dir=out_dir,
+                shadow_dir=shadow_dir,
+                synthetic=synthetic,
+                universe_code=universe,
+            )
+        )
         print(f"schedule --once wrote {path}")
         return 0
 
     from quantagent.scheduler.app import run_scheduler_blocking
 
-    run_scheduler_blocking(out_dir=out_dir, shadow_dir=shadow_dir)
+    run_scheduler_blocking(
+        out_dir=out_dir,
+        shadow_dir=shadow_dir,
+        synthetic=synthetic,
+        universe_code=universe,
+    )
+    return 0
+
+
+def _run_seed_universe(*, code: str, as_of: date, require_all: bool) -> int:
+    from quantagent.core.universe import seed_universe_snapshot
+
+    result = seed_universe_snapshot(code=code, as_of=as_of, require_all=require_all)
+    print(
+        f"seeded universe={result['code']} as_of={result['as_of']} "
+        f"n={result['n_seeded']} missing={len(result['missing'])}"  # type: ignore[arg-type]
+    )
+    missing = result["missing"]
+    if isinstance(missing, list) and missing:
+        preview = ", ".join(str(s) for s in missing[:10])
+        more = "" if len(missing) <= 10 else f" …(+{len(missing) - 10})"
+        print(f"  missing (ingest first): {preview}{more}")
     return 0
 
 
@@ -413,7 +453,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Validate and write into Postgres",
     )
-    ingest.add_argument("--universe", default=None, help="Reserved for universe ingest")
+    ingest.add_argument(
+        "--universe",
+        default=None,
+        help="Load bootstrap symbols from config/universe (e.g. mvp_cn_50)",
+    )
 
     bt = sub.add_parser("backtest", help="Run backtest strategies")
     bt.add_argument("--strategy", default="buy_and_hold")
@@ -477,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = sub.add_parser(
         "report",
-        help="Generate daily markdown report + shadow step (W8; synthetic default)",
+        help="Generate daily markdown report + shadow step (synthetic or live PIT)",
     )
     report.add_argument("--market", default="CN")
     report.add_argument("--as-of", type=_parse_date, default=None)
@@ -494,10 +538,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Append-only shadow journal directory",
     )
     report.add_argument(
+        "--universe",
+        default="mvp_cn_50",
+        help="Universe code for live mode (default: mvp_cn_50)",
+    )
+    report_mode = report.add_mutually_exclusive_group()
+    report_mode.add_argument(
         "--synthetic",
         action="store_true",
-        default=True,
-        help="Use synthetic demo bundle (default)",
+        help="Use synthetic demo bundle (default if neither flag set)",
+    )
+    report_mode.add_argument(
+        "--live",
+        action="store_true",
+        help="Build report from PITRepository (requires ingest + seed-universe)",
     )
 
     sched = sub.add_parser("schedule", help="APScheduler daily report (W8)")
@@ -509,6 +563,27 @@ def main(argv: list[str] | None = None) -> int:
     sched.add_argument("--as-of", type=_parse_date, default=None)
     sched.add_argument("--out", type=Path, default=Path("docs/daily-reports"))
     sched.add_argument("--shadow-dir", type=Path, default=Path("data/shadow"))
+    sched.add_argument("--universe", default="mvp_cn_50")
+    sched_mode = sched.add_mutually_exclusive_group()
+    sched_mode.add_argument("--synthetic", action="store_true", help="Synthetic job (default)")
+    sched_mode.add_argument("--live", action="store_true", help="Live PIT job")
+
+    seed_u = sub.add_parser(
+        "seed-universe",
+        help="Seed universe + snapshot from config/universe (symbols must exist in security)",
+    )
+    seed_u.add_argument("--universe", default="mvp_cn_50")
+    seed_u.add_argument(
+        "--as-of",
+        type=_parse_date,
+        required=True,
+        help="Snapshot date (use a trade date present in price_daily)",
+    )
+    seed_u.add_argument(
+        "--require-all",
+        action="store_true",
+        help="Fail if any bootstrap symbol is missing from security",
+    )
 
     args = parser.parse_args(argv)
 
@@ -554,21 +629,33 @@ def main(argv: list[str] | None = None) -> int:
             min_score=args.min_score,
         )
 
+    if args.command == "seed-universe":
+        return _run_seed_universe(
+            code=args.universe,
+            as_of=args.as_of,
+            require_all=args.require_all,
+        )
+
     if args.command == "report":
+        synthetic = not bool(args.live)
         return _run_report(
             market=args.market,
             as_of=args.as_of,
             out_dir=args.out,
             shadow_dir=args.shadow_dir,
-            synthetic=args.synthetic,
+            synthetic=synthetic,
+            universe=args.universe,
         )
 
     if args.command == "schedule":
+        synthetic = not bool(args.live)
         return _run_schedule(
             once=args.once,
             as_of=args.as_of,
             out_dir=args.out,
             shadow_dir=args.shadow_dir,
+            synthetic=synthetic,
+            universe=args.universe,
         )
 
     if args.command == "ingest":
@@ -579,11 +666,21 @@ def main(argv: list[str] | None = None) -> int:
             _replay_normalize(args.from_archive, load=args.load, dataset=dataset)
             return 0
 
-        if not args.symbols:
-            print("ingest requires --symbols or --from-archive", file=sys.stderr)
-            return 2
+        symbols: list[str] = []
+        if args.universe:
+            from quantagent.core.universe import load_universe_config
 
-        symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+            cfg = load_universe_config(args.universe)
+            symbols = list(cfg.bootstrap_symbols)
+            print(f"ingest universe={cfg.code} symbols={len(symbols)}")
+        elif args.symbols:
+            symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+        else:
+            print(
+                "ingest requires --symbols, --universe, or --from-archive",
+                file=sys.stderr,
+            )
+            return 2
 
         if args.dataset == "financial_statement":
             end = args.end or date.today()
