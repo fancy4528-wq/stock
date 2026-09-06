@@ -1,0 +1,11 @@
+selection:
+  top_n: 15
+  min_score: 0.55
+
+weighting:
+  method: equal
+  max_gross_exposure: 0.90
+  min_cash: 0.10
+
+rebalance:
+  max_turnover_per_rebalance: 0.30

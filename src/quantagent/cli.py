@@ -97,9 +97,15 @@ def _run_evaluate(
     return 0
 
 
-def _load_prices(df, *, source: str, raw_path: Path | None, target_date: date) -> None:
+def _load_prices(
+    df: object, *, source: str, raw_path: Path | None, target_date: date
+) -> None:
+    import polars as pl
+
     from quantagent.data.loaders import PriceLoader
 
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
     result = PriceLoader().load(
         df,
         source=source,
@@ -112,9 +118,15 @@ def _load_prices(df, *, source: str, raw_path: Path | None, target_date: date) -
     )
 
 
-def _load_financials(df, *, source: str, raw_path: Path | None, target_date: date) -> None:
+def _load_financials(
+    df: object, *, source: str, raw_path: Path | None, target_date: date
+) -> None:
+    import polars as pl
+
     from quantagent.data.loaders import FinancialLoader
 
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
     result = FinancialLoader().load(
         df,
         source=source,
@@ -139,8 +151,10 @@ async def _ingest_prices(
 ) -> None:
     from quantagent.data.collectors.akshare import AkshareIndexCollector, AksharePriceCollector
     from quantagent.data.collectors.baostock import BaostockPriceCollector
+    from quantagent.data.collectors.base import Collector
     from quantagent.data.normalizers.price import PriceNormalizer
 
+    collector: Collector
     if kind == "index":
         if source != "akshare":
             raise SystemExit("index ingest currently supports --source akshare only")
@@ -209,8 +223,76 @@ def _replay_normalize(raw_path: Path, *, load: bool, dataset: str) -> None:
         print(df.head(5))
     if load and df.height:
         source = str(df["source"][0]) if "source" in df.columns else "archive"
-        end = df["trade_date"].max()
-        _load_prices(df, source=source, raw_path=raw_path, target_date=end)
+        end_raw = df["trade_date"].max()
+        if not isinstance(end_raw, date):
+            raise TypeError(f"trade_date.max() returned {type(end_raw)!r}, expected date")
+        _load_prices(df, source=source, raw_path=raw_path, target_date=end_raw)
+
+
+def _run_portfolio_demo(*, market: str, top_n: int, min_score: float) -> int:
+    """Synthetic equal-weight + risk check smoke (no DB)."""
+    from quantagent.decision.portfolio import (
+        CandidateMeta,
+        PortfolioConfig,
+        build_equal_weight_portfolio,
+    )
+    from quantagent.decision.portfolio.config import SelectionConfig, WeightingConfig
+    from quantagent.decision.risk import RiskEngine, SecurityContext
+    from quantagent.decision.risk.types import PortfolioState
+
+    scores = {f"S{i:02d}": 0.95 - i * 0.02 for i in range(25)}
+    meta = {
+        s: CandidateMeta(
+            symbol=s,
+            industry=f"I{i % 4}",
+            board="main",
+            price=20.0 + i,
+            avg_amount_20d=80_000_000.0,
+        )
+        for i, s in enumerate(scores)
+    }
+    # Force a few exclusions to demonstrate filtering
+    meta["S00"] = meta["S00"].model_copy(update={"is_st": True})
+    meta["S01"] = meta["S01"].model_copy(update={"is_suspended": True})
+
+    cfg = PortfolioConfig(
+        selection=SelectionConfig(top_n=top_n, min_score=min_score),
+        weighting=WeightingConfig(method="equal", max_gross_exposure=0.90, min_cash=0.10),
+    )
+    target = build_equal_weight_portfolio(scores, meta=meta, cfg=cfg)
+    print(
+        f"market={market} selected={len(target.selected)} "
+        f"gross={sum(target.weights.values()):.4f} cash={target.cash_weight:.4f}"
+    )
+    for sym in target.selected[:10]:
+        print(f"  {sym}  w={target.weights[sym]:.4f}  score={scores[sym]:.2f}")
+    if target.excluded:
+        sample = list(target.excluded.items())[:5]
+        print(f"excluded_sample={sample}")
+
+    as_of = date.today()
+    ctx = {
+        s: SecurityContext(
+            symbol=s,
+            industry=meta[s].industry,
+            board=meta[s].board,
+            price=meta[s].price,
+            avg_amount_20d=meta[s].avg_amount_20d,
+            is_st=meta[s].is_st,
+            is_suspended=meta[s].is_suspended,
+        )
+        for s in target.weights
+    }
+    state = PortfolioState(as_of=as_of, cash=100_000.0, total_value=1_000_000.0)
+    result = RiskEngine().check(target.weights, state, as_of=as_of, context=ctx)
+    print(
+        f"risk decision={result.decision.value} "
+        f"final_names={len(result.final_target)} "
+        f"violations={len(result.violations)} hash={result.config_hash}"
+    )
+    for v in result.violations[:8]:
+        print(f"  {v.rule_code}  {v.action}  {v.detail}" + (f"  [{v.symbol}]" if v.symbol else ""))
+    return 0
 
 
 def _run_backtest(
@@ -351,6 +433,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Directory for markdown reports",
     )
 
+    pf = sub.add_parser(
+        "portfolio",
+        help="Equal-weight Top-N + risk check demo (W7; synthetic, no DB)",
+    )
+    pf.add_argument("--market", default="CN")
+    pf.add_argument("--top-n", type=int, default=15)
+    pf.add_argument("--min-score", type=float, default=0.55)
+
     report = sub.add_parser("report", help="Generate daily report (not yet implemented)")
     report.add_argument("--market", default=None)
     report.add_argument("--strategy", default=None)
@@ -390,6 +480,13 @@ def main(argv: list[str] | None = None) -> int:
             horizon=args.horizon,
             n_quantiles=args.quantiles,
             out_dir=args.out,
+        )
+
+    if args.command == "portfolio":
+        return _run_portfolio_demo(
+            market=args.market,
+            top_n=args.top_n,
+            min_score=args.min_score,
         )
 
     if args.command == "ingest":

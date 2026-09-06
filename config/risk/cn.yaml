@@ -1,0 +1,15 @@
+position:
+  max_single_weight: 0.10
+  max_industry_weight: 0.25
+  max_gross_exposure: 0.90
+  min_cash: 0.10
+  min_names: 5
+  max_names: 20
+
+liquidity:
+  min_avg_amount_20d: 50000000.0
+
+exclusion:
+  reject_st: true
+  reject_suspended: true
+  reject_limit_up_buy: true
