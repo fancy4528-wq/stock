@@ -19,3 +19,5 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-06 | baostock.query_history_k_data_plus | A2：已采字段 `tradestatus`/`isST`/`preclose` 写入 `is_suspended`/`is_limit_*`/`limit_*_px`（按 cn.yaml 板块/ST 幅度，收盘价封板判定） | PriceNormalizer enrichment + PriceLoader UPSERT；akshare 用涨跌幅推 prev_close、volume=0→停牌 |
 | 2026-09-06 | akshare.tool_trade_date_hist_sina / baostock.query_trade_dates | A3：交易日历入库；调度按日历跳过非交易日；`default_as_of` 用最近开市日 | `TradingCalendar` + `make ingest-calendar`；`--dual-check` 对比双源开市日 |
 | 2026-09-06 | baostock prices + akshare index | A4：live 调度链 ingest 增量→seed→report；默认 baostock 拉宇宙、akshare 拉 000300 | `make schedule-live` / `schedule-live-hang`；`ingest-daily` |
+| 2026-09-06 | baostock.query_history_k_data_plus | A5：`mvp_cn_50` 全 50 只 2025-01-02～2026-09-04 日线入库（约 407 交易日/只，20350 行） | `ingest --universe mvp_cn_50 --start 2025-01-01 --end 2026-09-05 --load --source baostock` |
+| 2026-09-06 | akshare SW industry + index | A5 配套：行业归属 50/50；沪深300 同步拉长至同窗（407 行） | `ingest --dataset security_industry --universe mvp_cn_50 --load`；`ingest --dataset index --symbols 000300.SH ...` |
