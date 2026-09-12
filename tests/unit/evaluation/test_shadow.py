@@ -62,3 +62,36 @@ async def test_shadow_step_records_and_unfilled(tmp_path: Path) -> None:
     )
     baseline_lines = (tmp_path / "shadow_baseline.jsonl").read_text(encoding="utf-8").strip()
     assert len(baseline_lines.splitlines()) == 2
+
+    status = engine.latest_status()
+    assert len(status) == 2
+    assert all("ret_cum" in row for row in status)
+
+
+@pytest.mark.asyncio
+async def test_shadow_latest_status_empty(tmp_path: Path) -> None:
+    engine = ShadowEngine(tmp_path, cfg=ShadowConfig(baseline_n=5, factor_top_n=2))
+    from quantagent.core.market import load_market_config
+    from quantagent.evaluation.journal import AppendOnlyJournal
+    from quantagent.evaluation.shadow.engine import ShadowPortfolioState
+
+    market = load_market_config("CN")
+    st = ShadowPortfolioState(
+        "empty",  # type: ignore[arg-type]
+        cfg=ShadowConfig(baseline_n=5, factor_top_n=2),
+        market=market,
+        journal=AppendOnlyJournal(tmp_path / "empty.jsonl"),
+    )
+    engine._states = {"empty": st}
+    rows = engine.latest_status()
+    assert rows == [
+        {
+            "portfolio": "empty",
+            "ret_1d": 0.0,
+            "ret_cum": 0.0,
+            "max_drawdown": 0.0,
+            "n_positions": 0,
+        }
+    ]
+
+    await engine._rebalance(st, symbols=[], as_of=date(2026, 9, 1), run_id="r")

@@ -13,6 +13,7 @@ __pycache__/
 dist/
 build/
 .coverage
+coverage.json
 htmlcov/
 .DS_Store
 Thumbs.db

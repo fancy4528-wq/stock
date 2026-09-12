@@ -38,3 +38,15 @@ def test_assert_no_lookahead_raises() -> None:
     df = pl.DataFrame({"announced_at": [datetime(2021, 1, 1, tzinfo=ZoneInfo("UTC"))]})
     with pytest.raises(LookaheadError):
         assert_no_lookahead(df, date(2020, 6, 1), "announced_at")
+
+
+def test_assert_no_lookahead_empty_or_missing_col() -> None:
+    assert_no_lookahead(pl.DataFrame(), date(2020, 1, 1), "announced_at")
+    assert_no_lookahead(pl.DataFrame({"x": [1]}), date(2020, 1, 1), "announced_at")
+
+
+def test_assert_no_lookahead_naive_datetime_as_of() -> None:
+    df = pl.DataFrame({"announced_at": [datetime(2020, 1, 1)]})
+    assert_no_lookahead(df, date(2020, 6, 1), "announced_at")
+    with pytest.raises(LookaheadError):
+        assert_no_lookahead(df, date(2019, 1, 1), "announced_at")
