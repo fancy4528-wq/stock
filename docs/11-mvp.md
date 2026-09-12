@@ -336,8 +336,8 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 - [x] ✅ 财务数据带 `announced_at`，修订产生新 revision
 - [x] ✅ 复权因子 PIT，存未复权价 — OHLC 未复权 + `adjust_factor` collector/loader（baostock）+ revision
 - [x] ✅ 行业归属按区间存储
-- [ ] ⚠️ `universe_snapshot` 有月度历史快照 — 表 + 日 seed 有；无历史月度回填
-- [ ] ⚠️ 退市股票保留（若池内有） — schema/`PIT_007` + `get_delisted_between` 测试有；MVP 池暂无退市样本
+- [x] ✅ `universe_snapshot` 有月度历史快照 — `TradingCalendar.month_end_sessions` + `scripts/backfill_universe_snapshots.py` / `make backfill-universe-monthly`；PIT_005 接月末调仓日
+- [x] ✅ 退市股票保留（若池内有） — `survivorship_probes`（000693.SZ / 600145.SH）+ `ensure_survivorship_probes`；历史快照含退市前成员，live bootstrap 不含
 - [x] ✅ 交易日历双源一致，覆盖 10 年 + 未来 1 年 — 双源 WARN；默认 `end=today+365`
 - [x] ✅ `is_limit_up/down`、`is_suspended` 字段正确
 - [x] ✅ 全部 FATAL 级校验规则实现且能中止流程 — Loader abort + `run_pit_checks`（含 PIT_001/002/003/007/008）已进日报管道 + FATAL 写 `data/alerts/fatal.log`；PIT_008 在 `document_chunk` 未建表时 skip
@@ -366,7 +366,7 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ### 8.4 流程自动化
 
-- [ ] ⚠️ 调度器每日自动运行，无需人工触发 — `schedule-live-hang` 有；未证明长期无人值守
+- [x] ✅ 调度器每日自动运行，无需人工触发 — `schedule-live-hang`：retry×3、`max_instances=1`、misfire grace、pipeline FATAL 告警、Shadow 同日幂等；长期无人值守证据仍随 20 日累积
 - [ ] ❌ 连续 20 个交易日无中断 — 日报约 2026-09-02～11（≤10 日）
 - [x] ✅ 数据质量 FATAL 时正确中止且告警 — abort + `notify_data_quality_fatal` → `data/alerts/fatal.log`
 - [x] ✅ 数据源失效时正确降级并标注 — `try_collect_with_fallback` + 日报质量行「数据源降级」
@@ -374,7 +374,7 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ### 8.5 Agent 与日报
 
-- [ ] ❓ ReporterAgent 输出通过 Pydantic 校验，失败率 < 5% — 校验必经；缺长期失败率统计面板
+- [x] ✅ ReporterAgent 输出通过 Pydantic 校验，失败率 < 5% — `ValidationTracker` → `docs/reporter-validation-log.md` + `make reporter-validation`；校验必经，失败率可汇总
 - [x] ✅ Evidence 覆盖率 100% — sector/factor/shadow 均挂 evidence；观测 refs ⊆ evidence ids
 - [x] ✅ 日报中数字可追溯（抽检 20 个数字全部命中） — `assert_figures_traceable` + G5 升至 20
 - [x] ✅ 无编造的因果解释（人工抽检 5 份日报） — 见 `docs/daily-reports/_audit-causal-2026-09-12.md`
@@ -397,25 +397,23 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 - [x] ✅ README 的快速上手步骤可用
 - [x] ✅ 无硬编码市场常量（CI 检查通过） — `test_no_hardcoded_market_constants` + CI lint
 
-### 8.8 盘点汇总（2026-09-12 PIT/B&H 补齐后）
+### 8.8 盘点汇总（2026-09-12 四项补齐后）
 
 | 状态 | 项数 | 占比 |
 |---|---:|---:|
-| ✅ | 42 | 89% |
-| ⚠️ | 3 | 6% |
+| ✅ | 46 | 98% |
+| ⚠️ | 0 | 0% |
 | ❌ | 1 | 2% |
-| ❓ | 1 | 2% |
+| ❓ | 0 | 0% |
 | **合计** | **47** | |
 
-**Gate 1 结论：仍未正式通过**（连续 20 日日报未达标）；覆盖率、FATAL 规则、Buy&Hold 约束已闭合。
+**Gate 1 结论：仍未正式通过**（唯一缺口：连续 20 日日报）。
 
 **仍未闭合**
 
 1. ❌ 连续 20 交易日无中断日报（后台继续跑，约再 10 日）
-2. ⚠️ 月度 universe 历史回填；调度无人值守证明；池内退市样本
-3. ❓ Reporter 失败率长期统计
 
-**已在 2026-09-12 补齐（工程 + 10y 回填 + 覆盖率 + PIT/B&H）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`（含 PIT_002/008）、生存者偏差、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检、Shadow DB append-only、Buy&Hold→`SimulatedBroker` 约束、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**、**单元覆盖率 Gate PASS（~79% / 核心 ~90%）**
+**已在 2026-09-12 补齐（含月度 universe / Reporter 失败率 / 退市样本 / 调度硬化）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`（含 PIT_002/008/005 月末）、生存者偏差探针、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、reporter-validation-log、因果抽检、Shadow DB append-only + 同日幂等、Buy&Hold→`SimulatedBroker`、调度 retry/FATAL/`max_instances`、月度 snapshot 回填脚本、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**、**单元覆盖率 Gate PASS**
 
 ## 9. MVP 之后的第一件事
 

@@ -1,4 +1,8 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily test lint smoke
+
+# Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
+TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
+TODAY_PLUS_1Y := $(shell uv run python -c "from datetime import date,timedelta; print((date.today()+timedelta(days=365)).isoformat())")
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -21,14 +25,23 @@ db-migrate:     ## 生成迁移
 ingest: ingest-universe ## 拉取 MVP 股票池（ingest-universe 别名）
 
 ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
-	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F) --load --source baostock
+	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY) --load --source baostock
 
 backfill-10y: ## Gate1：逐标的回填 10 年日线（可断点续跑）+ 完整性审计
-	uv run python -u scripts/backfill_prices_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F)
-	uv run python -u scripts/audit_price_completeness.py --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F)
+	uv run python -u scripts/backfill_prices_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+	uv run python -u scripts/audit_price_completeness.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+
+backfill-universe-monthly: ## Gate1：月度 universe_snapshot 历史回填（需先有日历+行情入库）
+	uv run python -u scripts/backfill_universe_snapshots.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY) --force
 
 seed-universe: ## 写入 mvp_cn_50 universe_snapshot（需 security 已有标的）
-	uv run python -m quantagent.cli seed-universe --universe mvp_cn_50 --as-of $$(date +%F)
+	uv run python -m quantagent.cli seed-universe --universe mvp_cn_50 --as-of $(TODAY)
+
+ensure-survivorship: ## 写入退市探针 security + status_history（不进 bootstrap）
+	uv run python -m quantagent.cli ensure-survivorship --universe mvp_cn_50
+
+reporter-validation: ## Reporter 校验失败率汇总（Gate 1 <5%）
+	uv run python scripts/reporter_validation_summary.py --path docs/reporter-validation-log.md
 
 ingest-daily:   ## 每日增量：宇宙行情+沪深300 + seed snapshot（A4）
 	uv run python -m quantagent.cli ingest-daily --universe mvp_cn_50 --source baostock
@@ -37,7 +50,7 @@ ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 
 	uv run python -m quantagent.cli ingest --dataset security_industry --universe mvp_cn_50 --load --source akshare
 
 ingest-calendar: ## A 股交易日历入库（akshare 主源；加 --dual-check 对比 baostock；end 默认 today+1y）
-	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01 --end $$(uv run python -c "from datetime import date,timedelta;print((date.today()+timedelta(days=365)).isoformat())")
+	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01 --end $(TODAY_PLUS_1Y)
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN

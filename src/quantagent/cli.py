@@ -704,6 +704,17 @@ def _run_seed_universe(*, code: str, as_of: date, require_all: bool) -> int:
     return 0
 
 
+def _run_ensure_survivorship(*, code: str) -> int:
+    from quantagent.core.universe import ensure_survivorship_probes
+
+    result = ensure_survivorship_probes(code=code)
+    print(
+        f"survivorship universe={result['code']} n={result['n_ensured']} "
+        f"symbols={result['symbols']}"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="quantagent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -934,6 +945,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Fail if any bootstrap symbol is missing from security",
     )
 
+    surv = sub.add_parser(
+        "ensure-survivorship",
+        help="Upsert delisted survivorship probe securities (not in bootstrap)",
+    )
+    surv.add_argument("--universe", default="mvp_cn_50")
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -985,6 +1002,9 @@ def main(argv: list[str] | None = None) -> int:
             as_of=args.as_of,
             require_all=args.require_all,
         )
+
+    if args.command == "ensure-survivorship":
+        return _run_ensure_survivorship(code=args.universe)
 
     if args.command == "report":
         synthetic = not bool(args.live)

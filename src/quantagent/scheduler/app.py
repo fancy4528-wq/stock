@@ -88,6 +88,9 @@ def build_scheduler(
         minute=mm,
         id="cn_daily_live",
         replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
     )
     return sched
 

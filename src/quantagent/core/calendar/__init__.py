@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from calendar import monthrange
 from datetime import date, timedelta
 from functools import lru_cache
 
@@ -121,6 +122,37 @@ class TradingCalendar:
                 d -= timedelta(days=1)
             return day - timedelta(days=1)
         return self.on_or_before(day)
+
+    def month_end_sessions(self, start: date, end: date) -> list[date]:
+        """Last open session on or before each calendar month-end in ``[start, end]``.
+
+        Used as MVP monthly rebalance / ``universe_snapshot`` dates
+        (``snapshot_frequency: monthly``). Dedupes when several month-ends
+        collapse to the same session.
+        """
+        if end < start:
+            return []
+        if self.is_empty():
+            raise DataError(f"TradingCalendar[{self.market}] is empty; ingest calendar first")
+        out: list[date] = []
+        y, m = start.year, start.month
+        while True:
+            last_day = date(y, m, monthrange(y, m)[1])
+            if last_day >= start:
+                try:
+                    sess = self.on_or_before(last_day)
+                except DataError:
+                    sess = None
+                if sess is not None and start <= sess <= end:
+                    if not out or out[-1] != sess:
+                        out.append(sess)
+            if m == 12:
+                y, m = y + 1, 1
+            else:
+                m += 1
+            if date(y, m, 1) > end:
+                break
+        return out
 
 
 @lru_cache
