@@ -21,3 +21,8 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-06 | baostock prices + akshare index | A4：live 调度链 ingest 增量→seed→report；默认 baostock 拉宇宙、akshare 拉 000300 | `make schedule-live` / `schedule-live-hang`；`ingest-daily` |
 | 2026-09-06 | baostock.query_history_k_data_plus | A5：`mvp_cn_50` 全 50 只 2025-01-02～2026-09-04 日线入库（约 407 交易日/只，20350 行） | `ingest --universe mvp_cn_50 --start 2025-01-01 --end 2026-09-05 --load --source baostock` |
 | 2026-09-06 | akshare SW industry + index | A5 配套：行业归属 50/50；沪深300 同步拉长至同窗（407 行） | `ingest --dataset security_industry --universe mvp_cn_50 --load`；`ingest --dataset index --symbols 000300.SH ...` |
+| 2026-09-12 | akshare calendar dual-check | Gate1 10y：日历 2015-01-01～2027-09-12；open_days=2916（窗内至 2026-09-12 为 2843） | `ingest --dataset trading_calendar --dual-check` |
+| 2026-09-12 | baostock.query_history_k_data_plus | Gate1 10y：`mvp_cn_50` 全 50 只 2015-01-05～2026-09-11 日线；134507 行；上市后缺失率 **0.00%** | `scripts/backfill_prices_10y.py`；审计 `scripts/audit_price_completeness.py` |
+| 2026-09-12 | akshare.stock_zh_index_daily | 沪深300 同窗 2843 行入库 | `ingest --dataset index --symbols 000300.SH --start 2015-01-01 --end 2026-09-12 --load` |
+| 2026-09-12 | baostock.query_adjust_factor | 50 只复权因子 711 行（除权日稀疏） | `scripts/backfill_adjust_10y.py` |
+| 2026-09-12 | seed + industry | `mvp_cn_50` snapshot n=50 missing=0；行业 50/50 | `seed-universe` + industry ingest |

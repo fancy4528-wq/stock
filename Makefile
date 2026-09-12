@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -22,6 +22,10 @@ ingest: ingest-universe ## 拉取 MVP 股票池（ingest-universe 别名）
 
 ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
 	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F) --load --source baostock
+
+backfill-10y: ## Gate1：逐标的回填 10 年日线（可断点续跑）+ 完整性审计
+	uv run python -u scripts/backfill_prices_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F)
+	uv run python -u scripts/audit_price_completeness.py --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F)
 
 seed-universe: ## 写入 mvp_cn_50 universe_snapshot（需 security 已有标的）
 	uv run python -m quantagent.cli seed-universe --universe mvp_cn_50 --as-of $$(date +%F)
