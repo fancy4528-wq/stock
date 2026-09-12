@@ -390,33 +390,32 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ### 8.7 工程质量
 
-- [ ] ❌ 测试覆盖率 > 70%（核心模块 > 85%） — 整体约 **65%**（单元）；核心模块参差
+- [x] ✅ 测试覆盖率 > 70%（核心模块 > 85%） — 单元：整体 **~79%**；核心（`core/repository`+assertions、`data/loaders`、`data/validators`、`evaluation/shadow`）**~90%**；`cli.py`/`backtest/sentinel.py` 已 omit；`make test-fast` + `scripts/cov_gate1_summary.py`
 - [x] ✅ mypy strict 通过
 - [x] ✅ ruff 无警告
 - [x] ✅ `make` 命令齐备（db-init / ingest / backtest / report / test） — `ingest` 别名已加
 - [x] ✅ README 的快速上手步骤可用
 - [x] ✅ 无硬编码市场常量（CI 检查通过） — `test_no_hardcoded_market_constants` + CI lint
 
-### 8.8 盘点汇总（2026-09-12 补齐后）
+### 8.8 盘点汇总（2026-09-12 覆盖率冲刺后）
 
 | 状态 | 项数 | 占比 |
 |---|---:|---:|
-| ✅ | 39 | 83% |
+| ✅ | 40 | 85% |
 | ⚠️ | 5 | 11% |
-| ❌ | 2 | 4% |
+| ❌ | 1 | 2% |
 | ❓ | 1 | 2% |
 | **合计** | **47** | |
 
-**Gate 1 结论：仍未正式通过**（连续 20 日日报与覆盖率未达标），数据完整性（含 10 年）已闭合。
+**Gate 1 结论：仍未正式通过**（连续 20 日日报未达标）；覆盖率与数据完整性已闭合。
 
 **仍未闭合**
 
 1. ❌ 连续 20 交易日无中断日报（后台继续跑，约再 10 日）
-2. ❌ 测试覆盖率 > 70% / 核心 > 85%（现约 65%）
-3. ⚠️ 月度 universe 历史回填；Buy&Hold 引擎约束；FATAL 规则全集（PIT_002/008）；调度无人值守证明；池内退市样本
-4. ❓ Reporter 失败率长期统计
+2. ⚠️ 月度 universe 历史回填；Buy&Hold 引擎约束；FATAL 规则全集（PIT_002/008）；调度无人值守证明；池内退市样本
+3. ❓ Reporter 失败率长期统计
 
-**已在 2026-09-12 补齐（工程 + 10y 回填）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`、生存者偏差、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检、Shadow DB append-only、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**
+**已在 2026-09-12 补齐（工程 + 10y 回填 + 覆盖率）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`、生存者偏差、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检、Shadow DB append-only、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**、**单元覆盖率 Gate PASS（~79% / 核心 ~90%）**
 
 ## 9. MVP 之后的第一件事
 

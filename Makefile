@@ -75,11 +75,12 @@ schedule-live:  ## 跑一次 live 流水线（ingest→seed→report）
 schedule-live-hang: ## 常驻挂 live 调度（每日 18:00，交易日跑；Ctrl+C 停）
 	uv run python -m quantagent.cli schedule --live
 
-test:           ## 跑全部测试
-	uv run pytest -v --cov=src/quantagent --cov-report=term-missing
+test:           ## 跑全部测试（含覆盖率；cli/sentinel 已 omit）
+	uv run pytest -v --cov=src/quantagent --cov-report=term-missing:skip-covered --cov-report=json:coverage.json
 
-test-fast:      ## 只跑单元测试
-	uv run pytest tests/unit -v
+test-fast:      ## 只跑单元测试（含覆盖率）
+	uv run pytest tests/unit -v --cov=src/quantagent --cov-report=term-missing:skip-covered --cov-report=json:coverage.json
+	uv run python scripts/cov_gate1_summary.py
 
 smoke:          ## P0 一键 smoke（A→H，含 W3 load + W4 财务/指数/回测）
 	uv run python scripts/smoke_p0.py

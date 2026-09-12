@@ -73,3 +73,17 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src/quantagent"]
+omit = [
+    "**/cli.py",
+    "**/backtest/sentinel.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
