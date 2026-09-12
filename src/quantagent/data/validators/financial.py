@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import polars as pl
 
 from quantagent.data.validators.report import RuleResult
 
-RuleFn = Callable[[pl.DataFrame], RuleResult]
+if TYPE_CHECKING:
+    from quantagent.data.validators import ValidationContext
+
+RuleFn = Callable[..., RuleResult]
 
 
 def _row_key(symbol: str, period_end: object, period_type: object) -> str:
     return f"{symbol}|{period_end}|{period_type}"
 
 
-def rule_fin_001_balance_identity(df: pl.DataFrame) -> RuleResult:
+def rule_fin_001_balance_identity(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
+    del ctx
     """total_assets ≈ total_liab + total_equity (1% tolerance)."""
     needed = {"total_assets", "total_liab", "total_equity"}
     if not needed.issubset(df.columns):
@@ -45,7 +52,10 @@ def rule_fin_001_balance_identity(df: pl.DataFrame) -> RuleResult:
     )
 
 
-def rule_fin_002_announced_after_period(df: pl.DataFrame) -> RuleResult:
+def rule_fin_002_announced_after_period(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
+    del ctx
     """announced_at.date >= period_end (FATAL)."""
     bad = df.filter(pl.col("announced_at").dt.date() < pl.col("period_end"))
     keys = [
@@ -62,7 +72,10 @@ def rule_fin_002_announced_after_period(df: pl.DataFrame) -> RuleResult:
     )
 
 
-def rule_fin_003_announce_lag(df: pl.DataFrame) -> RuleResult:
+def rule_fin_003_announce_lag(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
+    del ctx
     """announced_at within 180 days of period_end (WARN)."""
     lag = (pl.col("announced_at").dt.date() - pl.col("period_end")).dt.total_days()
     bad = df.filter(lag > 180)
@@ -80,7 +93,10 @@ def rule_fin_003_announce_lag(df: pl.DataFrame) -> RuleResult:
     )
 
 
-def rule_fin_004_revenue_nonneg(df: pl.DataFrame) -> RuleResult:
+def rule_fin_004_revenue_nonneg(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
+    del ctx
     bad = df.filter(pl.col("revenue").is_not_null() & (pl.col("revenue") < 0))
     keys = [
         _row_key(s, p, t)
@@ -96,8 +112,42 @@ def rule_fin_004_revenue_nonneg(df: pl.DataFrame) -> RuleResult:
     )
 
 
-def rule_fin_006_gross_profit(df: pl.DataFrame) -> RuleResult:
+def rule_fin_005_major_restatement(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
+    """Same period different revision with |Δ net_profit| > 20% → INFO mark."""
+    del ctx
+    needed = {"symbol", "period_end", "period_type", "net_profit"}
+    if not needed.issubset(df.columns):
+        return RuleResult(code="FIN_005", level="INFO", status="pass", detail="skipped")
+
+    keys: list[str] = []
+    for group_key, group in df.group_by(["symbol", "period_end", "period_type"]):
+        profits = [float(x) for x in group["net_profit"].to_list() if x is not None]
+        if len(profits) < 2:
+            continue
+        base = max(abs(profits[0]), 1e-9)
+        if any(abs(p - profits[0]) / base > 0.20 for p in profits[1:]):
+            if isinstance(group_key, tuple):
+                sym, pend, ptype = group_key
+            else:
+                sym, pend, ptype = group_key, None, None
+            keys.append(_row_key(str(sym), pend, ptype))
+    return RuleResult(
+        code="FIN_005",
+        level="INFO",
+        status="warn" if keys else "pass",
+        detail="major restatement (>20% net_profit)" if keys else "ok",
+        affected_count=len(keys),
+        affected_keys=keys,
+    )
+
+
+def rule_fin_006_gross_profit(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
     """gross_profit ≈ revenue - operating_cost (1%)."""
+    del ctx
     needed = {"gross_profit", "revenue", "operating_cost"}
     if not needed.issubset(df.columns):
         return RuleResult(code="FIN_006", level="WARN", status="pass", detail="skipped")
@@ -126,8 +176,11 @@ def rule_fin_006_gross_profit(df: pl.DataFrame) -> RuleResult:
     )
 
 
-def rule_fin_009_duplicate_revision_keys(df: pl.DataFrame) -> RuleResult:
+def rule_fin_009_duplicate_revision_keys(
+    df: pl.DataFrame, ctx: ValidationContext | None = None
+) -> RuleResult:
     """Duplicate (symbol, period_end, period_type, announced_at) is FATAL."""
+    del ctx
     dup = (
         df.group_by(["symbol", "period_end", "period_type", "announced_at"])
         .len()
@@ -152,6 +205,7 @@ FINANCIAL_STATEMENT_RULES: list[RuleFn] = [
     rule_fin_002_announced_after_period,
     rule_fin_003_announce_lag,
     rule_fin_004_revenue_nonneg,
+    rule_fin_005_major_restatement,
     rule_fin_006_gross_profit,
     rule_fin_009_duplicate_revision_keys,
 ]

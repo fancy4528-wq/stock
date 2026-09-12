@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
+.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -50,6 +50,9 @@ backtest:       ## 跑指定策略回测
 
 test-sentinel:  ## 跑未来函数哨兵（集成）
 	uv run pytest tests/integration/test_pit_sentinel.py tests/integration/test_backtest_sentinel.py -v
+
+test-edge:      ## MVP 边角清单验证（排除 H/D3/D4 留给 20 天观察）
+	uv run pytest tests/unit/mvp/test_edge_case_checklist.py tests/integration/test_edge_case_pit.py tests/integration/test_pit_sentinel.py -v
 
 report:         ## 生成日报（默认 synthetic；真实数据用 make report-live）
 	uv run python -m quantagent.cli report --market CN --synthetic --out docs/daily-reports
