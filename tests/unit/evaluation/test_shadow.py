@@ -24,6 +24,15 @@ def test_journal_append_only(tmp_path: Path) -> None:
         j.delete(0)
 
 
+def test_journal_has_as_of(tmp_path: Path) -> None:
+    j = AppendOnlyJournal(tmp_path / "j.jsonl")
+    j.append({"as_of": "2026-09-01", "run_id": "r1"})
+    assert j.has_as_of(date(2026, 9, 1))
+    assert j.has_as_of("2026-09-01", run_id="r1")
+    assert not j.has_as_of("2026-09-01", run_id="other")
+    assert j.latest_for_as_of(date(2026, 9, 1))["run_id"] == "r1"
+
+
 @pytest.mark.asyncio
 async def test_shadow_step_records_and_unfilled(tmp_path: Path) -> None:
     as_of = date(2026, 9, 1)
@@ -69,10 +78,40 @@ async def test_shadow_step_records_and_unfilled(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_shadow_step_idempotent_same_as_of(tmp_path: Path) -> None:
+    as_of = date(2026, 9, 1)
+    symbols = synthetic_universe(10)
+    bars = build_synthetic_bars(symbols, as_of)
+    scores = {s: 1.0 - i * 0.01 for i, s in enumerate(symbols)}
+    engine = ShadowEngine(
+        tmp_path,
+        cfg=ShadowConfig(baseline_n=10, factor_top_n=3, initial_cash=1_000_000.0),
+    )
+    first = await engine.step(
+        as_of=as_of,
+        run_id="20260901-cn-daily",
+        bars=bars,
+        baseline_symbols=symbols,
+        factor_scores=scores,
+    )
+    second = await engine.step(
+        as_of=as_of,
+        run_id="20260901-cn-daily",
+        bars=bars,
+        baseline_symbols=symbols,
+        factor_scores=scores,
+    )
+    assert len(second) == 2
+    assert all("idempotent_skip" in r.notes for r in second)
+    baseline_lines = (tmp_path / "shadow_baseline.jsonl").read_text(encoding="utf-8").strip()
+    assert len(baseline_lines.splitlines()) == 1
+    assert first[0].nav == second[0].nav
+
+
+@pytest.mark.asyncio
 async def test_shadow_latest_status_empty(tmp_path: Path) -> None:
     engine = ShadowEngine(tmp_path, cfg=ShadowConfig(baseline_n=5, factor_top_n=2))
     from quantagent.core.market import load_market_config
-    from quantagent.evaluation.journal import AppendOnlyJournal
     from quantagent.evaluation.shadow.engine import ShadowPortfolioState
 
     market = load_market_config("CN")
@@ -93,5 +132,3 @@ async def test_shadow_latest_status_empty(tmp_path: Path) -> None:
             "n_positions": 0,
         }
     ]
-
-    await engine._rebalance(st, symbols=[], as_of=date(2026, 9, 1), run_id="r")

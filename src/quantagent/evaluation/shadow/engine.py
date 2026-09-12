@@ -106,7 +106,15 @@ class ShadowEngine:
         baseline_symbols: list[str],
         factor_scores: dict[str, float],
     ) -> list[ShadowDayRecord]:
-        """Rebalance both shadows for one day and append journal rows."""
+        """Rebalance both shadows for one day and append journal rows.
+
+        Idempotent for the same ``as_of``: if every portfolio journal already has
+        that date, return the existing rows without re-trading (safe re-runs).
+        """
+        cached = self._cached_day(as_of)
+        if cached is not None:
+            return cached
+
         records: list[ShadowDayRecord] = []
         # Factor Top-N
         ranked = sorted(factor_scores.items(), key=lambda x: x[1], reverse=True)
@@ -169,6 +177,23 @@ class ShadowEngine:
                 self._db_store.append(rec)
             records.append(rec)
         return records
+
+    def _cached_day(self, as_of: date) -> list[ShadowDayRecord] | None:
+        """Return prior journal rows when every portfolio already stepped ``as_of``."""
+        rows: list[ShadowDayRecord] = []
+        for pid, st in self._states.items():
+            if not st.journal.has_as_of(as_of):
+                return None
+            raw = st.journal.latest_for_as_of(as_of)
+            if raw is None:
+                return None
+            raw = {
+                **raw,
+                "portfolio": pid,
+                "notes": list(raw.get("notes") or []) + ["idempotent_skip"],
+            }
+            rows.append(ShadowDayRecord.model_validate(raw))
+        return rows
 
     async def _rebalance(
         self,

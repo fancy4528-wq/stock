@@ -10,6 +10,7 @@ from quantagent.agents.llm.client import LLMClient, NullLLMClient
 from quantagent.agents.llm.metering import CostRecord, CostTracker
 from quantagent.agents.reporter.prompts import load_common_constraints, load_prompt
 from quantagent.agents.reporter.schema import DailyReport, Observation
+from quantagent.agents.reporter.validation_log import ValidationRecord, ValidationTracker
 from quantagent.agents.tools.market import (
     ReportBundle,
     get_factor_performance,
@@ -18,7 +19,7 @@ from quantagent.agents.tools.market import (
     get_shadow_status,
 )
 from quantagent.agents.validation import require_evidence, validate_model
-from quantagent.shared.errors import SchemaValidationError
+from quantagent.shared.errors import EvidenceMissingError, SchemaValidationError
 
 
 def _pct(x: float) -> str:
@@ -217,13 +218,42 @@ class ReporterAgent:
         llm: LLMClient | None = None,
         *,
         cost_tracker: CostTracker | None = None,
+        validation_tracker: ValidationTracker | None = None,
     ) -> None:
         self._llm: LLMClient = llm or NullLLMClient()
         self._costs = cost_tracker or CostTracker()
+        self._validations = validation_tracker or ValidationTracker()
+
+    def _record_validation(
+        self,
+        *,
+        ctx: AgentContext,
+        mode: str,
+        ok: bool,
+        error: BaseException | None = None,
+    ) -> None:
+        err_type = type(error).__name__ if error is not None else None
+        detail = str(error)[:200] if error is not None else None
+        self._validations.add(
+            ValidationRecord(
+                run_id=ctx.run_id,
+                as_of=ctx.as_of,
+                agent=self.name,
+                mode=mode,
+                ok=ok,
+                error_type=err_type,
+                detail=detail,
+            )
+        )
 
     async def run(self, ctx: AgentContext, bundle: ReportBundle) -> DailyReport:
         if isinstance(self._llm, NullLLMClient) or self._llm.model == "null":
-            report = build_deterministic_report(bundle)
+            try:
+                report = build_deterministic_report(bundle)
+            except (SchemaValidationError, EvidenceMissingError, ValueError) as exc:
+                self._record_validation(ctx=ctx, mode="deterministic", ok=False, error=exc)
+                raise
+            self._record_validation(ctx=ctx, mode="deterministic", ok=True)
             self._costs.add(
                 CostRecord(
                     run_id=ctx.run_id,
@@ -260,5 +290,22 @@ class ReporterAgent:
             )
         )
         if not resp.text.strip():
-            return build_deterministic_report(bundle)
-        return _parse_llm_daily_report(resp.text, bundle)
+            try:
+                report = build_deterministic_report(bundle)
+            except (SchemaValidationError, EvidenceMissingError, ValueError) as exc:
+                self._record_validation(ctx=ctx, mode="deterministic", ok=False, error=exc)
+                raise
+            self._record_validation(ctx=ctx, mode="deterministic", ok=True)
+            return report
+        try:
+            report = _parse_llm_daily_report(resp.text, bundle)
+        except (
+            SchemaValidationError,
+            EvidenceMissingError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            self._record_validation(ctx=ctx, mode="llm", ok=False, error=exc)
+            raise SchemaValidationError(str(exc)) from exc
+        self._record_validation(ctx=ctx, mode="llm", ok=True)
+        return report

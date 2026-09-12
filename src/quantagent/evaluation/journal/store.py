@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,24 @@ class AppendOnlyJournal:
                 continue
             rows.append(json.loads(line))
         return rows
+
+    def has_as_of(self, as_of: date | str, *, run_id: str | None = None) -> bool:
+        """True if a journal row already exists for ``as_of`` (optionally + run_id)."""
+        target = as_of.isoformat() if isinstance(as_of, date) else str(as_of)
+        for row in self.read_all():
+            if str(row.get("as_of")) != target:
+                continue
+            if run_id is None or str(row.get("run_id")) == run_id:
+                return True
+        return False
+
+    def latest_for_as_of(self, as_of: date | str) -> dict[str, Any] | None:
+        target = as_of.isoformat() if isinstance(as_of, date) else str(as_of)
+        found: dict[str, Any] | None = None
+        for row in self.read_all():
+            if str(row.get("as_of")) == target:
+                found = row
+        return found
 
     def update(self, *_args: Any, **_kwargs: Any) -> None:
         raise JournalMutationError(f"journal is append-only: {self.path}")

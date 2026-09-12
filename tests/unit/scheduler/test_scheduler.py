@@ -135,3 +135,73 @@ async def test_run_once_live_uses_pipeline(tmp_path: Path) -> None:
     assert path == expected
     mock_pipe.assert_awaited_once()
     assert mock_pipe.await_args.kwargs["skip_ingest"] is True
+
+
+@pytest.mark.asyncio
+async def test_daily_live_pipeline_retries_transient_then_succeeds(tmp_path: Path) -> None:
+    out = tmp_path / "reports"
+    shadow = tmp_path / "shadow"
+    report_path = out / "2026-09-04.md"
+    calls = {"n": 0}
+
+    async def flaky_refresh(**_kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise ConnectionError("blip")
+        return type(
+            "R",
+            (),
+            {
+                "as_of": date(2026, 9, 4),
+                "start": date(2026, 9, 2),
+                "end": date(2026, 9, 4),
+                "price_rows": 1,
+                "index_rows": 1,
+                "n_seeded": 1,
+                "run_id": "20260904-cn-daily",
+                "degraded": [],
+            },
+        )()
+
+    with (
+        patch(
+            "quantagent.scheduler.jobs.daily_pipeline.refresh_daily_market_data",
+            flaky_refresh,
+        ),
+        patch(
+            "quantagent.scheduler.jobs.daily_pipeline.daily_report_job",
+            AsyncMock(return_value=report_path),
+        ),
+        patch("quantagent.scheduler.jobs.daily_pipeline._run_pit_checks"),
+    ):
+        path = await daily_live_pipeline_job(
+            out_dir=out,
+            shadow_dir=shadow,
+            as_of=date(2026, 9, 4),
+        )
+    assert path == report_path
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_daily_live_pipeline_fatal_on_hard_fail(tmp_path: Path) -> None:
+    with (
+        patch(
+            "quantagent.scheduler.jobs.daily_pipeline.refresh_daily_market_data",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch("quantagent.scheduler.jobs.daily_pipeline.notify_pipeline_fatal") as fatal,
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await daily_live_pipeline_job(
+                out_dir=tmp_path / "r",
+                shadow_dir=tmp_path / "s",
+                as_of=date(2026, 9, 4),
+            )
+    fatal.assert_called_once()
+
+
+def test_build_scheduler_job_has_max_instances() -> None:
+    sched = build_scheduler(synthetic=False)
+    job = next(j for j in sched.get_jobs() if j.id == "cn_daily_live")
+    assert job.max_instances == 1

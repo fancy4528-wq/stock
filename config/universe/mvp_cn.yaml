@@ -73,3 +73,18 @@ bootstrap_symbols:
   - 000333.SZ  # 美的集团
   - 000651.SZ  # 格力电器
   - 601138.SH  # 工业富联
+
+# Survivorship probes: historically delisted names kept in DB + pre-delist snapshots.
+# NOT in bootstrap_symbols (daily ingest stays clean). Used by monthly backfill /
+# ensure_survivorship_probes for Gate 1 PIT_007 / get_delisted_between evidence.
+survivorship_probes:
+  - symbol: 000693.SZ
+    name: 华泽钴镍
+    list_date: 1997-02-26
+    delist_date: 2020-07-10
+    board: main
+  - symbol: 600145.SH
+    name: 新亿股份
+    list_date: 1999-09-23
+    delist_date: 2021-07-09
+    board: main

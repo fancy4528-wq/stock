@@ -10,6 +10,7 @@ from quantagent.agents.base import AgentContext
 from quantagent.agents.llm.client import NullLLMClient
 from quantagent.agents.llm.metering import CostTracker
 from quantagent.agents.reporter import ReporterAgent
+from quantagent.agents.reporter.validation_log import ValidationTracker
 from quantagent.agents.tools.market import (
     FactorRankRow,
     FactorRow,
@@ -191,7 +192,12 @@ async def run_daily_pipeline(
 ) -> Path:
     """Shadow step -> ReporterAgent -> markdown (synthetic or live PIT)."""
     costs = CostTracker()
-    agent = ReporterAgent(llm=NullLLMClient(), cost_tracker=costs)
+    validations = ValidationTracker()
+    agent = ReporterAgent(
+        llm=NullLLMClient(),
+        cost_tracker=costs,
+        validation_tracker=validations,
+    )
 
     if synthetic:
         as_of = as_of or (date.today() - timedelta(days=1))
@@ -274,4 +280,5 @@ async def run_daily_pipeline(
     write_daily_report(report, bundle, out)
     if write_cost_log:
         costs.append_cost_log(Path("docs/cost-log.md"))
+        validations.append_validation_log(Path("docs/reporter-validation-log.md"))
     return out
