@@ -194,9 +194,7 @@ class FinancialNormalizer:
 
             revenue = _f(rec.get("revenue"))
             op_cost = _f(rec.get("operating_cost"))
-            gross = (
-                revenue - op_cost if revenue is not None and op_cost is not None else None
-            )
+            gross = revenue - op_cost if revenue is not None and op_cost is not None else None
             rows.append(
                 {
                     "symbol": symbol,
@@ -267,9 +265,7 @@ class FinancialNormalizer:
     def _meta_frame(self, df: pl.DataFrame) -> pl.DataFrame:
         keys = ["_request_symbol", "REPORT_DATE", "REPORT_TYPE"]
         cols = keys + [
-            c
-            for c in ("NOTICE_DATE", "UPDATE_DATE", "REPORT_DATE_NAME")
-            if c in df.columns
+            c for c in ("NOTICE_DATE", "UPDATE_DATE", "REPORT_DATE_NAME") if c in df.columns
         ]
         return df.select(cols).unique(subset=keys, keep="first")
 

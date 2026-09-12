@@ -36,9 +36,7 @@ def test_expand_dense_calendar_neighbors() -> None:
 
 
 def test_normalize_akshare_open_list(tmp_path: Path) -> None:
-    raw = pl.DataFrame(
-        {"trade_date": ["2026-09-01", "2026-09-02", "2026-09-04"]}
-    )
+    raw = pl.DataFrame({"trade_date": ["2026-09-01", "2026-09-02", "2026-09-04"]})
     archive = ParquetArchive(tmp_path)
     batch = archive.write(
         raw,

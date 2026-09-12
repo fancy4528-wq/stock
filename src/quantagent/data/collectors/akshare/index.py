@@ -62,9 +62,7 @@ class AkshareIndexCollector(Collector):
             )
             if filtered.height == 0:
                 continue
-            frames.append(
-                filtered.with_columns(pl.lit(norm).alias("_request_symbol"))
-            )
+            frames.append(filtered.with_columns(pl.lit(norm).alias("_request_symbol")))
 
         if not frames:
             raise SourceUnavailableError(

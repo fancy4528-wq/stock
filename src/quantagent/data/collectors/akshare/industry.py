@@ -72,9 +72,7 @@ class AkshareIndustryCollector(Collector):
             frames.append(l3.with_columns(pl.lit("taxonomy_l3").alias("_kind")))
 
         code_col = "行业代码" if "行业代码" in l1.columns else l1.columns[0]
-        l1_codes = [
-            sw_code_digits(c) for c in l1.get_column(code_col).to_list() if c is not None
-        ]
+        l1_codes = [sw_code_digits(c) for c in l1.get_column(code_col).to_list() if c is not None]
         member_frames: list[pl.DataFrame] = []
         for code in l1_codes:
             cons = await self._fetch_l1_members(code)
@@ -125,7 +123,7 @@ class AkshareIndustryCollector(Collector):
             reraise=True,
         )
         def _call() -> Any:
-            import akshare as ak  # type: ignore[import-untyped]
+            import akshare as ak
             import requests
 
             apply_proxy_bypass()

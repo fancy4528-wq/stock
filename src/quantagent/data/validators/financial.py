@@ -72,9 +72,7 @@ def rule_fin_002_announced_after_period(
     )
 
 
-def rule_fin_003_announce_lag(
-    df: pl.DataFrame, ctx: ValidationContext | None = None
-) -> RuleResult:
+def rule_fin_003_announce_lag(df: pl.DataFrame, ctx: ValidationContext | None = None) -> RuleResult:
     del ctx
     """announced_at within 180 days of period_end (WARN)."""
     lag = (pl.col("announced_at").dt.date() - pl.col("period_end")).dt.total_days()
@@ -143,9 +141,7 @@ def rule_fin_005_major_restatement(
     )
 
 
-def rule_fin_006_gross_profit(
-    df: pl.DataFrame, ctx: ValidationContext | None = None
-) -> RuleResult:
+def rule_fin_006_gross_profit(df: pl.DataFrame, ctx: ValidationContext | None = None) -> RuleResult:
     """gross_profit ≈ revenue - operating_cost (1%)."""
     del ctx
     needed = {"gross_profit", "revenue", "operating_cost"}

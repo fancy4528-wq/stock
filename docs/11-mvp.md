@@ -326,73 +326,98 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ## 8. MVP 验收清单（Gate 1）
 
+> **盘点日期：2026-09-12（二次：当日缺口补齐后）**  
+> 图例：✅ 达标 · ⚠️ 部分达标 · ❌ 缺口 · ❓ 缺实测证据
+
 ### 8.1 数据正确性
 
-- [ ] 50 支池内标的 10 年日线完整，缺失率 < 1%
-- [ ] 双源行情校验通过，差异 < 0.5%
-- [ ] 财务数据带 `announced_at`，修订产生新 revision
-- [ ] 复权因子 PIT，存未复权价
-- [ ] 行业归属按区间存储
-- [ ] `universe_snapshot` 有月度历史快照
-- [ ] 退市股票保留（若池内有）
-- [ ] 交易日历双源一致，覆盖 10 年 + 未来 1 年
-- [ ] `is_limit_up/down`、`is_suspended` 字段正确
-- [ ] 全部 FATAL 级校验规则实现且能中止流程
-- [ ] 原始数据归档为 Parquet，可重放 normalize
+- [ ] ❌ 50 支池内标的 10 年日线完整，缺失率 < 1% — 现仅 ~2025-01～2026-09（约 407 日/只）；需长窗回填
+- [x] ✅ 双源行情校验通过，差异 < 0.5% — `PX_009` + `attach_peer_closes`；`--dual-check` / daily_refresh 已接入
+- [x] ✅ 财务数据带 `announced_at`，修订产生新 revision
+- [x] ✅ 复权因子 PIT，存未复权价 — OHLC 未复权 + `adjust_factor` collector/loader（baostock）+ revision
+- [x] ✅ 行业归属按区间存储
+- [ ] ⚠️ `universe_snapshot` 有月度历史快照 — 表 + 日 seed 有；无历史月度回填
+- [ ] ⚠️ 退市股票保留（若池内有） — schema/`PIT_007` + `get_delisted_between` 测试有；MVP 池暂无退市样本
+- [x] ✅ 交易日历双源一致，覆盖 10 年 + 未来 1 年 — 双源 WARN；默认 `end=today+365`
+- [x] ✅ `is_limit_up/down`、`is_suspended` 字段正确
+- [ ] ⚠️ 全部 FATAL 级校验规则实现且能中止流程 — Loader abort + `run_pit_checks` 已进日报管道 + FATAL 写 `data/alerts/fatal.log`；仍缺 PIT_002/008
+- [x] ✅ 原始数据归档为 Parquet，可重放 normalize
 
 ### 8.2 PIT 正确性（最重要）
 
-- [ ] **未来函数哨兵测试通过**
-- [ ] 所有 `Repository` 方法强制 `as_of`（keyword-only 无默认值）
-- [ ] `get_financials_as_of` 正确过滤 `announced_at`
-- [ ] `get_universe_as_of` 返回历史成分而非当前成分
-- [ ] 运行时断言 `assert_no_lookahead` 已接入
-- [ ] CI 含 PIT 静态检查（禁止业务代码写 SQL）
-- [ ] 生存者偏差测试通过
+- [x] ✅ **未来函数哨兵测试通过**（`make test-sentinel` / `test-edge`）
+- [x] ✅ 所有 `Repository` 方法强制 `as_of`（keyword-only 无默认值） — 含 `get_security_names` / `latest_trade_date`
+- [x] ✅ `get_financials_as_of` 正确过滤 `announced_at`
+- [x] ✅ `get_universe_as_of` 返回历史成分而非当前成分
+- [x] ✅ 运行时断言 `assert_no_lookahead` 已接入 — financials/prices/industry/universe
+- [x] ✅ CI 含 PIT 静态检查（禁止业务代码写 SQL） — `scripts/lint_pit.py` + `.github/workflows/ci.yml` + `make lint`
+- [x] ✅ 生存者偏差测试通过 — `get_delisted_between` + `tests/unit/core/test_survivorship.py`
 
 ### 8.3 因子与回测
 
-- [ ] 8 个因子实现，均为纯函数
-- [ ] 每个因子有单元测试（构造数据验证计算正确）
-- [ ] 每个因子有 IC / 分层测试报告
-- [ ] `ep_ttm` 因子的 PIT 正确性单独验证
-- [ ] Buy&Hold 基准回测可跑，结果记入 `baseline-results.md`
-- [ ] 单因子回测结果与 IC 分析一致（验证回测引擎正确）
-- [ ] 回测含 T+1、涨跌停、停牌、成本
-- [ ] 涨跌停拒单有统计输出
+- [x] ✅ 8 个因子实现，均为纯函数
+- [x] ✅ 每个因子有单元测试（构造数据验证计算正确）
+- [x] ✅ 每个因子有 IC / 分层测试报告 — `docs/factor-reports/{8 codes}.md`（synthetic MVP panel）
+- [x] ✅ `ep_ttm` 因子的 PIT 正确性单独验证
+- [x] ✅ Buy&Hold 基准回测可跑，结果记入 `baseline-results.md`
+- [x] ✅ 单因子回测结果与 IC 分析一致 — `backtest --strategy single_factor` + IC↔LS 符号对照
+- [ ] ⚠️ 回测含 T+1、涨跌停、停牌、成本 — `SimulatedBroker`/Shadow 有；`BuyAndHoldEngine` 仍裸跑
+- [x] ✅ 涨跌停拒单有统计输出 — `summarize_unfilled` + 日报「拒单统计」
 
 ### 8.4 流程自动化
 
-- [ ] 调度器每日自动运行，无需人工触发
-- [ ] 连续 20 个交易日无中断
-- [ ] 数据质量 FATAL 时正确中止且告警
-- [ ] 数据源失效时正确降级并标注
-- [ ] `run_id` 贯穿全链路
+- [ ] ⚠️ 调度器每日自动运行，无需人工触发 — `schedule-live-hang` 有；未证明长期无人值守
+- [ ] ❌ 连续 20 个交易日无中断 — 日报约 2026-09-02～11（≤10 日）
+- [x] ✅ 数据质量 FATAL 时正确中止且告警 — abort + `notify_data_quality_fatal` → `data/alerts/fatal.log`
+- [x] ✅ 数据源失效时正确降级并标注 — `try_collect_with_fallback` + 日报质量行「数据源降级」
+- [x] ✅ `run_id` 贯穿全链路 — report/agent/shadow + `DailyRefreshResult.run_id`
 
 ### 8.5 Agent 与日报
 
-- [ ] ReporterAgent 输出通过 Pydantic 校验，失败率 < 5%
-- [ ] Evidence 覆盖率 100%
-- [ ] 日报中数字可追溯（抽检 20 个数字全部命中）
-- [ ] 无编造的因果解释（人工抽检 5 份日报）
-- [ ] Token 成本实测记入 `cost-log.md`
+- [ ] ❓ ReporterAgent 输出通过 Pydantic 校验，失败率 < 5% — 校验必经；缺长期失败率统计面板
+- [x] ✅ Evidence 覆盖率 100% — sector/factor/shadow 均挂 evidence；观测 refs ⊆ evidence ids
+- [x] ✅ 日报中数字可追溯（抽检 20 个数字全部命中） — `assert_figures_traceable` + G5 升至 20
+- [x] ✅ 无编造的因果解释（人工抽检 5 份日报） — 见 `docs/daily-reports/_audit-causal-2026-09-12.md`
+- [x] ✅ Token 成本实测记入 `cost-log.md` — pipeline 自动 append（deterministic $0）
 
 ### 8.6 Shadow Portfolio
 
-- [ ] `shadow_baseline`（等权 50）已启动
-- [ ] `shadow_factor`（单因子 Top15）已启动
-- [ ] 记录 append-only（触发器生效）
-- [ ] 成本模型完整
-- [ ] 未执行项（涨停买不进）有记录
+- [x] ✅ `shadow_baseline`（等权 50）已启动
+- [x] ✅ `shadow_factor`（单因子 Top15）已启动
+- [x] ✅ 记录 append-only（触发器生效） — 文件 journal + DB `shadow_day` + `prevent_update_delete` trigger
+- [x] ✅ 成本模型完整
+- [x] ✅ 未执行项（涨停买不进）有记录
 
 ### 8.7 工程质量
 
-- [ ] 测试覆盖率 > 70%（核心模块 > 85%）
-- [ ] mypy strict 通过
-- [ ] ruff 无警告
-- [ ] `make` 命令齐备（db-init / ingest / backtest / report / test）
-- [ ] README 的快速上手步骤可用
-- [ ] 无硬编码市场常量（CI 检查通过）
+- [ ] ❌ 测试覆盖率 > 70%（核心模块 > 85%） — 整体约 **65%**（单元）；核心模块参差
+- [x] ✅ mypy strict 通过
+- [x] ✅ ruff 无警告
+- [x] ✅ `make` 命令齐备（db-init / ingest / backtest / report / test） — `ingest` 别名已加
+- [x] ✅ README 的快速上手步骤可用
+- [x] ✅ 无硬编码市场常量（CI 检查通过） — `test_no_hardcoded_market_constants` + CI lint
+
+### 8.8 盘点汇总（2026-09-12 补齐后）
+
+| 状态 | 项数 | 占比 |
+|---|---:|---:|
+| ✅ | 38 | 81% |
+| ⚠️ | 5 | 11% |
+| ❌ | 3 | 6% |
+| ❓ | 1 | 2% |
+| **合计** | **47** | |
+
+**Gate 1 结论：仍未正式通过**（时间型与 10 年完整性未达标），但可补工程项已基本闭合。
+
+**仍未闭合（需时间或大回填）**
+
+1. ❌ 连续 20 交易日无中断日报（后台继续跑，约再 10 日）
+2. ❌ 50 池 10 年日线缺失率 < 1%（长窗 `make ingest-universe` / 分批回填）
+3. ❌ 测试覆盖率 > 70% / 核心 > 85%
+4. ⚠️ 月度 universe 历史回填；Buy&Hold 引擎约束；FATAL 规则全集（PIT_002/008）；调度无人值守证明；池内退市样本
+5. ❓ Reporter 失败率长期统计
+
+**已在本次补齐**：双源行情接入、`adjust_factor` 入库、日历 +1y、FATAL 告警、源降级、`run_pit` 入管道、生存者偏差、`lint_pit`/CI、as_of/assert 补全、8 因子 IC 报告、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检记录、Shadow DB append-only、mypy/ruff/README/`make ingest`
 
 ## 9. MVP 之后的第一件事
 

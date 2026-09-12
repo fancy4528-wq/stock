@@ -296,9 +296,10 @@ class IndustryLoader:
                 valid_from = date.fromisoformat(str(valid_from)[:10])
             row_source = str(row.get("source") or source)
 
-            open_rows = conn.execute(
-                text(
-                    """
+            open_rows = (
+                conn.execute(
+                    text(
+                        """
                     SELECT si.industry_id, si.valid_from, i.level
                     FROM security_industry si
                     JOIN industry i ON i.industry_id = si.industry_id
@@ -308,13 +309,16 @@ class IndustryLoader:
                       AND si.valid_to IS NULL
                     ORDER BY si.valid_from DESC
                     """
-                ),
-                {
-                    "security_id": security_id,
-                    "taxonomy_id": taxonomy_id,
-                    "level": level,
-                },
-            ).mappings().all()
+                    ),
+                    {
+                        "security_id": security_id,
+                        "taxonomy_id": taxonomy_id,
+                        "level": level,
+                    },
+                )
+                .mappings()
+                .all()
+            )
 
             same_open = next((r for r in open_rows if int(r["industry_id"]) == industry_id), None)
             if same_open is not None:

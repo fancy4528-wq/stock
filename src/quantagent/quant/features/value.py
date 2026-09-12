@@ -108,6 +108,7 @@ def ttm_eps_from_financials(financials: pl.DataFrame, *, as_of: date) -> pl.Data
             if is_fy:
                 fy_eps = eps_f
 
+        eps_ttm: float | None
         if len(quarterly) >= 4:
             eps_ttm = float(sum(quarterly[-4:]))
         elif fy_eps is not None:

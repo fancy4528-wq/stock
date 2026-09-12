@@ -12,10 +12,10 @@
 
 | 项 | 状态 |
 |---|---|
-| 阶段 | 文档设计期（Pre-P0） |
+| 阶段 | Gate 1 进行中 — P0+P1 MVP 每日日报 + Shadow 已跑通 |
 | 首发市场 | A 股（研究 + 建议，不接交易 API） |
 | 目标市场 | 美股（Paper → 实盘）、A 股（权限达成后接入） |
-| 代码 | 未开始 |
+| 代码 | P0 数据/回测基线 + P1 因子/日报/Shadow 管道可用 |
 
 ## 文档导航
 
@@ -65,20 +65,34 @@
 5. **每个决策必须可追溯到证据与数据版本。** 无法追溯的决策视为无效。
 6. **监控的规则层必须零 LLM 成本，且在预算耗尽时仍能工作。** 止损、跌停、停牌、组合回撤告警不依赖 LLM。
 
-## 快速上手（P0 完成后可用）
+## 快速上手
 
 ```bash
 # 启动基础设施
 docker compose up -d
 
-# 初始化数据库
+# 初始化数据库 + 参考数据
 make db-init
 
-# 拉取 MVP 股票池数据
+# 交易日历、股票池、每日增量
+make ingest-calendar
 make ingest-universe
+make ingest-daily
 
-# 跑基准回测
+# 因子评估、基准回测
+make evaluate
 make backtest-baseline
+
+# 日报（synthetic demo 或 live PIT）
+make report
+make report-live
+
+# 调度（单次 synthetic 或 live 链）
+make schedule
+make schedule-live
+
+# MVP 边角清单
+make test-edge
 ```
 
 ## 许可与免责

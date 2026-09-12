@@ -26,7 +26,12 @@ class AksharePriceCollector(Collector):
     source = "akshare"
     dataset = "price_daily"
 
-    def __init__(self, archive_root: Path | None = None, *, rate_limit: float | None = None) -> None:
+    def __init__(
+        self,
+        archive_root: Path | None = None,
+        *,
+        rate_limit: float | None = None,
+    ) -> None:
         self.rate_limit = (
             rate_limit if rate_limit is not None else get_settings().akshare_rate_limit
         )

@@ -8,6 +8,10 @@ from urllib import request as urllib_request
 from quantagent.shared.config import get_settings
 
 
+def _empty_proxies() -> dict[str, str]:
+    return {}
+
+
 def apply_proxy_bypass() -> None:
     """Bypass broken local system proxies for vendor HTTP calls when configured.
 
@@ -29,4 +33,4 @@ def apply_proxy_bypass() -> None:
     os.environ["NO_PROXY"] = "*"
     os.environ["no_proxy"] = "*"
     # Prefer empty proxy map for code paths that call getproxies() directly.
-    urllib_request.getproxies = lambda: {}  # type: ignore[assignment]
+    urllib_request.getproxies = _empty_proxies

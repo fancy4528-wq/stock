@@ -36,9 +36,7 @@ def test_calendar_loader_and_service(clean_pit_tables: Engine) -> None:
 
     with engine.connect() as conn:
         n_open = conn.execute(
-            text(
-                "SELECT COUNT(*) FROM trading_calendar WHERE market='CN' AND is_open"
-            )
+            text("SELECT COUNT(*) FROM trading_calendar WHERE market='CN' AND is_open")
         ).scalar_one()
     assert int(n_open) == 4
 

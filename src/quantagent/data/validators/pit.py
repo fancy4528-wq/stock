@@ -40,9 +40,10 @@ def rule_pit_001_announced_before_ingested(conn: Connection) -> RuleResult:
 
 def rule_pit_003_no_interval_overlap(conn: Connection) -> RuleResult:
     """security_industry intervals for same (security, industry) must not overlap."""
-    rows = conn.execute(
-        text(
-            """
+    rows = (
+        conn.execute(
+            text(
+                """
             SELECT a.security_id, a.industry_id, a.valid_from
             FROM security_industry a
             JOIN security_industry b
@@ -52,8 +53,11 @@ def rule_pit_003_no_interval_overlap(conn: Connection) -> RuleResult:
              AND (a.valid_to IS NULL OR a.valid_to > b.valid_from)
             LIMIT 50
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     keys = [f"{r['security_id']}|{r['industry_id']}|{r['valid_from']}" for r in rows]
     return RuleResult(
         code="PIT_003",
@@ -95,9 +99,10 @@ def rule_pit_005_snapshot_on_rebalance(
 
 def rule_pit_006_no_price_after_delist(conn: Connection) -> RuleResult:
     """Prices after security.delist_date → WARN."""
-    rows = conn.execute(
-        text(
-            """
+    rows = (
+        conn.execute(
+            text(
+                """
             SELECT s.symbol, p.trade_date
             FROM price_daily p
             JOIN security s ON s.security_id = p.security_id
@@ -105,8 +110,11 @@ def rule_pit_006_no_price_after_delist(conn: Connection) -> RuleResult:
               AND p.trade_date > s.delist_date
             LIMIT 50
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     keys = [f"{r['symbol']}|{r['trade_date']}" for r in rows]
     return RuleResult(
         code="PIT_006",
@@ -120,17 +128,21 @@ def rule_pit_006_no_price_after_delist(conn: Connection) -> RuleResult:
 
 def rule_pit_007_delisted_security_retained(conn: Connection) -> RuleResult:
     """Delisted status history must still resolve to a security row (FATAL)."""
-    rows = conn.execute(
-        text(
-            """
+    rows = (
+        conn.execute(
+            text(
+                """
             SELECT h.security_id
             FROM security_status_history h
             LEFT JOIN security s ON s.security_id = h.security_id
             WHERE h.status = 'delisted' AND s.security_id IS NULL
             LIMIT 50
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     keys = [str(r["security_id"]) for r in rows]
     return RuleResult(
         code="PIT_007",

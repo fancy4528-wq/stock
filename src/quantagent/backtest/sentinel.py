@@ -30,9 +30,7 @@ def assert_metrics_unchanged(
         bv, pv = getattr(b, name), getattr(p, name)
         if isinstance(bv, float):
             if abs(bv - pv) > tol:
-                raise AssertionError(
-                    f"lookahead leak on {name}: baseline={bv} polluted={pv}"
-                )
+                raise AssertionError(f"lookahead leak on {name}: baseline={bv} polluted={pv}")
         elif bv != pv:
             raise AssertionError(f"lookahead leak on {name}: baseline={bv} polluted={pv}")
 

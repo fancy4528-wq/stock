@@ -376,47 +376,57 @@ def build_live_quality(
     day: pl.DataFrame,
     industry: pl.DataFrame,
     factor_scores: dict[str, float],
+    degraded: list[str] | None = None,
 ) -> list[QualityCheck]:
     n = len(symbols)
     n_bars = day.height if not day.is_empty() else 0
     suspended: list[str] = []
     if not day.is_empty() and "is_suspended" in day.columns and "symbol" in day.columns:
-        suspended = [
-            str(s)
-            for s in day.filter(pl.col("is_suspended"))["symbol"].to_list()
-        ]
-    return [
-        QualityCheck(
-            name="行情完整性",
-            ok=n > 0 and n_bars == n,
-            detail=f"{n_bars}/{n}",
-        ),
-        QualityCheck(
-            name="停牌标注",
-            ok=True,
-            detail=(
-                f"{len(suspended)} 只停牌: {', '.join(suspended[:5])}"
-                if suspended
-                else "无停牌"
+        suspended = [str(s) for s in day.filter(pl.col("is_suspended"))["symbol"].to_list()]
+    checks: list[QualityCheck] = []
+    if degraded:
+        checks.append(
+            QualityCheck(
+                name="数据源降级",
+                ok=False,
+                detail="; ".join(degraded),
+            )
+        )
+    checks.extend(
+        [
+            QualityCheck(
+                name="行情完整性",
+                ok=n > 0 and n_bars == n,
+                detail=f"{n_bars}/{n}",
             ),
-        ),
-        QualityCheck(
-            name="行业归属",
-            ok=not industry.is_empty(),
-            detail=("已入库" if not industry.is_empty() else "未入库（板块表为空）"),
-        ),
-        QualityCheck(
-            name="因子截面",
-            ok=len(factor_scores) >= max(3, n // 5) if n else False,
-            detail=f"{len(factor_scores)}/{n} 有 {('mom_20d' if factor_scores else 'n/a')}",
-        ),
-        QualityCheck(name="PIT 校验", ok=True, detail="via PITRepository"),
-        QualityCheck(
-            name="未来函数哨兵",
-            ok=True,
-            detail="依赖 CI / make test-sentinel（本报告路径强制 as_of）",
-        ),
-    ]
+            QualityCheck(
+                name="停牌标注",
+                ok=True,
+                detail=(
+                    f"{len(suspended)} 只停牌: {', '.join(suspended[:5])}"
+                    if suspended
+                    else "无停牌"
+                ),
+            ),
+            QualityCheck(
+                name="行业归属",
+                ok=not industry.is_empty(),
+                detail=("已入库" if not industry.is_empty() else "未入库（板块表为空）"),
+            ),
+            QualityCheck(
+                name="因子截面",
+                ok=len(factor_scores) >= max(3, n // 5) if n else False,
+                detail=f"{len(factor_scores)}/{n} 有 {('mom_20d' if factor_scores else 'n/a')}",
+            ),
+            QualityCheck(name="PIT 校验", ok=True, detail="via PITRepository"),
+            QualityCheck(
+                name="未来函数哨兵",
+                ok=True,
+                detail="依赖 CI / make test-sentinel（本报告路径强制 as_of）",
+            ),
+        ]
+    )
+    return checks
 
 
 def load_live_report_data(
@@ -429,6 +439,7 @@ def load_live_report_data(
     factor_name: str = "mom_20d",
     lookback_days: int = 120,
     code_version: str = "dev",
+    degraded: list[str] | None = None,
 ) -> LiveReportData:
     """Load PIT panels and assemble shadow inputs + report facts."""
     mkt = load_market_config(market)
@@ -472,13 +483,13 @@ def load_live_report_data(
         target = TradingCalendar("CN").default_as_of()
     else:
         target = as_of
-    latest = repo.latest_trade_date(symbols + [index_symbol], on_or_before=target)
+    latest = repo.latest_trade_date(symbols + [index_symbol], as_of=target)
     if latest is None:
         raise LiveReportError("No price_daily rows for universe/benchmark; ingest first")
     as_of = latest
 
     start = as_of - timedelta(days=lookback_days)
-    names = repo.get_security_names(symbols)
+    names = repo.get_security_names(symbols, as_of=as_of)
 
     uni_prices = repo.get_prices(symbols, as_of=as_of, start=start, end=as_of, adjust="qfq")
     if uni_prices.is_empty():
@@ -537,7 +548,13 @@ def load_live_report_data(
         factor_codes=[c for c in factor_codes if c != "ep_ttm"][:5],
     )
     ranks = build_factor_ranks(factor_panel, as_of=as_of, factor=factor_name, names=names, top_n=5)
-    quality = build_live_quality(symbols=symbols, day=day, industry=industry, factor_scores=scores)
+    quality = build_live_quality(
+        symbols=symbols,
+        day=day,
+        industry=industry,
+        factor_scores=scores,
+        degraded=degraded,
+    )
     bars = bars_from_day_prices(day)
 
     partial = ReportBundle(

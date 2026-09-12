@@ -11,9 +11,12 @@ from quantagent.core.market import load_market_config
 from quantagent.core.universe import load_universe_config, seed_universe_snapshot
 from quantagent.data.collectors.akshare import AkshareIndexCollector, AksharePriceCollector
 from quantagent.data.collectors.baostock import BaostockPriceCollector
-from quantagent.data.collectors.base import Collector
+from quantagent.data.collectors.base import Collector, RawBatch
 from quantagent.data.loaders import PriceLoader
 from quantagent.data.normalizers.price import PriceNormalizer
+from quantagent.data.ops.degrade import try_collect_with_fallback
+from quantagent.data.ops.price_dual_check import validate_prices_dual
+from quantagent.reporting.pipeline import make_run_id
 from quantagent.shared.errors import DataError
 
 
@@ -28,6 +31,8 @@ class DailyRefreshResult:
     index_rows: int = 0
     n_seeded: int = 0
     missing: list[str] = field(default_factory=list)
+    degraded: list[str] = field(default_factory=list)
+    run_id: str | None = None
 
 
 def _ingest_window_start(
@@ -51,6 +56,48 @@ def _ingest_window_start(
         return as_of
 
 
+def _peer_source(source: str) -> str:
+    return "baostock" if source == "akshare" else "akshare"
+
+
+def _price_collector(source: str, archive_root: Path | None) -> Collector:
+    if source == "akshare":
+        return AksharePriceCollector(archive_root=archive_root)
+    if source == "baostock":
+        return BaostockPriceCollector(archive_root=archive_root)
+    raise ValueError(f"unsupported price source: {source}")
+
+
+async def _collect_price_batch(
+    *,
+    symbols: list[str],
+    start: date,
+    end: date,
+    source: str,
+    archive_root: Path | None,
+) -> tuple[RawBatch, str | None]:
+    """Collect price batch; fallback to peer source on ``SourceUnavailableError``."""
+    primary = _price_collector(source, archive_root)
+    fallback_src = _peer_source(source)
+    fallback = _price_collector(fallback_src, archive_root)
+
+    async def _primary() -> RawBatch:
+        return await primary.collect(end, symbols=symbols, start=start, end=end)
+
+    async def _fallback() -> RawBatch:
+        return await fallback.collect(end, symbols=symbols, start=start, end=end)
+
+    batch, degraded = await try_collect_with_fallback(
+        _primary,
+        _fallback,
+        primary_source=source,
+        fallback_source=fallback_src,
+        dataset="price_daily",
+    )
+    annotation = degraded.annotation() if degraded else None
+    return batch, annotation
+
+
 async def _collect_and_load_prices(
     *,
     symbols: list[str],
@@ -59,20 +106,28 @@ async def _collect_and_load_prices(
     source: str,
     kind: str,
     archive_root: Path | None,
+    dual_check: bool = False,
+    run_id: str | None = None,
+    degraded_notes: list[str] | None = None,
 ) -> int:
     collector: Collector
     if kind == "index":
         if source != "akshare":
             raise ValueError("index ingest currently supports source=akshare only")
         collector = AkshareIndexCollector(archive_root=archive_root)
-    elif source == "akshare":
-        collector = AksharePriceCollector(archive_root=archive_root)
-    elif source == "baostock":
-        collector = BaostockPriceCollector(archive_root=archive_root)
+        batch = await collector.collect(end, symbols=symbols, start=start, end=end)
     else:
-        raise ValueError(f"unsupported price source: {source}")
+        batch, note = await _collect_price_batch(
+            symbols=symbols,
+            start=start,
+            end=end,
+            source=source,
+            archive_root=archive_root,
+        )
+        if note and degraded_notes is not None:
+            degraded_notes.append(note)
+            print(f"daily_refresh DEGRADED: {note}")
 
-    batch = await collector.collect(end, symbols=symbols, start=start, end=end)
     df = PriceNormalizer().normalize(batch)
     print(
         f"daily_refresh {kind} source={batch.source} batch_id={batch.batch_id} "
@@ -80,6 +135,20 @@ async def _collect_and_load_prices(
     )
     if not df.height:
         return 0
+
+    if dual_check and kind == "price":
+        peer_src = _peer_source(batch.source)
+        peer_collector = _price_collector(peer_src, archive_root)
+        peer_batch = await peer_collector.collect(end, symbols=symbols, start=start, end=end)
+        peer_df = PriceNormalizer().normalize(peer_batch)
+        validate_prices_dual(
+            df,
+            peer_df,
+            check_date=end,
+            persist=False,
+            run_id=run_id,
+        )
+
     result = PriceLoader().load(
         df,
         source=batch.source,
@@ -103,6 +172,8 @@ async def refresh_daily_market_data(
     archive_root: Path | None = None,
     skip_ingest: bool = False,
     skip_seed: bool = False,
+    dual_check: bool = False,
+    run_id: str | None = None,
 ) -> DailyRefreshResult:
     """Ingest recent universe + benchmark bars, then seed ``universe_snapshot``.
 
@@ -114,6 +185,7 @@ async def refresh_daily_market_data(
     session = as_of or cal.default_as_of()
     start = _ingest_window_start(session, lookback_sessions=lookback_sessions, market=market)
     end = session
+    resolved_run_id = run_id or make_run_id(session, market)
 
     cfg = load_universe_config(universe_code)
     symbols = list(cfg.bootstrap_symbols)
@@ -122,6 +194,7 @@ async def refresh_daily_market_data(
 
     price_rows = 0
     index_rows = 0
+    degraded: list[str] = []
     if not skip_ingest:
         if symbols:
             price_rows = await _collect_and_load_prices(
@@ -131,6 +204,9 @@ async def refresh_daily_market_data(
                 source=price_source,
                 kind="price",
                 archive_root=archive_root,
+                dual_check=dual_check,
+                run_id=resolved_run_id,
+                degraded_notes=degraded,
             )
         # Index bars: akshare only today.
         index_rows = await _collect_and_load_prices(
@@ -170,4 +246,6 @@ async def refresh_daily_market_data(
         index_rows=index_rows,
         n_seeded=n_seeded,
         missing=missing,
+        degraded=degraded,
+        run_id=resolved_run_id,
     )

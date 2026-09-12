@@ -59,9 +59,7 @@ def test_fin_001_detects_balance_break() -> None:
 
 
 def test_fin_002_fatal_early_announce() -> None:
-    df = pl.DataFrame(
-        [_row(announced_at=datetime(2024, 1, 1, 15, 0, tzinfo=CN))]
-    )
+    df = pl.DataFrame([_row(announced_at=datetime(2024, 1, 1, 15, 0, tzinfo=CN))])
     r = rule_fin_002_announced_after_period(df)
     assert r.status == "fail"
     assert r.level == "FATAL"
@@ -74,10 +72,6 @@ def test_fin_009_duplicate_keys() -> None:
 
 
 def test_validator_blocks_on_fin_fatal() -> None:
-    df = pl.DataFrame(
-        [_row(announced_at=datetime(2024, 1, 1, 15, 0, tzinfo=CN))]
-    )
+    df = pl.DataFrame([_row(announced_at=datetime(2024, 1, 1, 15, 0, tzinfo=CN))])
     with pytest.raises(DataQualityError, match="FIN_002"):
-        Validator().validate(
-            df, "financial_statement", ValidationContext(persist=False)
-        )
+        Validator().validate(df, "financial_statement", ValidationContext(persist=False))
