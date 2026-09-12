@@ -379,11 +379,26 @@ def build_live_quality(
 ) -> list[QualityCheck]:
     n = len(symbols)
     n_bars = day.height if not day.is_empty() else 0
+    suspended: list[str] = []
+    if not day.is_empty() and "is_suspended" in day.columns and "symbol" in day.columns:
+        suspended = [
+            str(s)
+            for s in day.filter(pl.col("is_suspended"))["symbol"].to_list()
+        ]
     return [
         QualityCheck(
             name="行情完整性",
             ok=n > 0 and n_bars == n,
             detail=f"{n_bars}/{n}",
+        ),
+        QualityCheck(
+            name="停牌标注",
+            ok=True,
+            detail=(
+                f"{len(suspended)} 只停牌: {', '.join(suspended[:5])}"
+                if suspended
+                else "无停牌"
+            ),
         ),
         QualityCheck(
             name="行业归属",

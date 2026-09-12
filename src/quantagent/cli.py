@@ -190,7 +190,7 @@ async def _ingest_calendar(
     import polars as pl
 
     from quantagent.data.collectors.base import Collector
-    from quantagent.data.normalizers.calendar import CalendarNormalizer, open_dates
+    from quantagent.data.normalizers.calendar import CalendarNormalizer
 
     collector: Collector
     if source == "akshare":
@@ -221,27 +221,27 @@ async def _ingest_calendar(
 
     if dual_check and source == "akshare":
         from quantagent.data.collectors.baostock import BaostockCalendarCollector
+        from quantagent.data.validators.calendar_dual import compare_calendar_open_days
 
         other = BaostockCalendarCollector(archive_root=archive_root)
         # Compare overlapping window (default last ~2y if start omitted)
         chk_start = start or date(end.year - 2, 1, 1)
         other_batch = await other.collect(end, start=chk_start, end=end)
         other_df = CalendarNormalizer().normalize(other_batch, start=chk_start, end=end)
-        a = open_dates(df.filter(pl.col("trade_date") >= chk_start))
-        b = open_dates(other_df)
-        only_a = sorted(a - b)
-        only_b = sorted(b - a)
-        if only_a or only_b:
+        dual = compare_calendar_open_days(df, other_df, window_start=chk_start)
+        if dual.status == "warn":
             print(
-                f"calendar dual-check WARN: akshare_only={len(only_a)} "
-                f"baostock_only={len(only_b)} window=[{chk_start}, {end}]"
+                f"calendar dual-check WARN: {dual.detail} "
+                f"window=[{chk_start}, {end}]"
             )
-            if only_a[:5]:
-                print(f"  akshare_only sample: {only_a[:5]}")
-            if only_b[:5]:
-                print(f"  baostock_only sample: {only_b[:5]}")
+            samples = (dual.actual or {}).get("primary_only") or []
+            if samples:
+                print(f"  akshare_only sample: {samples}")
+            samples_b = (dual.actual or {}).get("secondary_only") or []
+            if samples_b:
+                print(f"  baostock_only sample: {samples_b}")
         else:
-            print(f"calendar dual-check OK: open_days={len(a)} window=[{chk_start}, {end}]")
+            print(f"calendar dual-check OK: {dual.detail} window=[{chk_start}, {end}]")
 
     if load and df.height:
         _load_calendar(df, source=batch.source, raw_path=batch.raw_path, target_date=end)

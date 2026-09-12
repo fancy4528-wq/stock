@@ -14,7 +14,7 @@ from quantagent.data.validators.calendar import CALENDAR_RULES
 from quantagent.data.validators.financial import FINANCIAL_STATEMENT_RULES
 from quantagent.data.validators.industry import INDUSTRY_RULES
 from quantagent.data.validators.price import PRICE_DAILY_RULES
-from quantagent.data.validators.report import ValidationReport
+from quantagent.data.validators.report import RuleResult, ValidationReport
 from quantagent.shared.config import get_settings
 from quantagent.shared.errors import DataQualityError
 
@@ -71,7 +71,7 @@ class Validator:
         else:
             raise DataQualityError(f"No validator registered for dataset={dataset!r}")
 
-        results = [rule(df) for rule in rules]
+        results = [_invoke_rule(rule, df, context) for rule in rules]
         report = ValidationReport(
             dataset=dataset,
             check_date=context.check_date,
@@ -89,6 +89,14 @@ class Validator:
             err = next(r for r in report.results if r.failed and r.level == "ERROR")
             raise DataQualityError(f"{err.code}: {err.detail}")
         return report
+
+
+def _invoke_rule(rule: Any, df: pl.DataFrame, ctx: ValidationContext) -> RuleResult:
+    """Call ``rule(df)`` or ``rule(df, ctx)`` depending on signature."""
+    try:
+        return rule(df, ctx)
+    except TypeError:
+        return rule(df)
 
 
 def persist_rule_results(

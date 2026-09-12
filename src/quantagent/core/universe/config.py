@@ -109,6 +109,27 @@ def seed_universe_snapshot(
                 "No bootstrap symbols exist in security table; ingest prices first"
             )
 
+        # A2 / universe rule ``not is_suspended``: exclude names suspended on as_of.
+        suspended_ids = {
+            int(r.security_id)
+            for r in conn.execute(
+                text(
+                    """
+                    SELECT security_id
+                    FROM price_daily
+                    WHERE trade_date = :d AND is_suspended IS TRUE
+                    """
+                ),
+                {"d": as_of},
+            )
+        }
+        if suspended_ids:
+            present = [s for s in present if known[s] not in suspended_ids]
+        if not present:
+            raise UniverseSeedError(
+                f"All candidate symbols suspended or missing on as_of={as_of.isoformat()}"
+            )
+
         universe_id = conn.execute(
             text(
                 """
