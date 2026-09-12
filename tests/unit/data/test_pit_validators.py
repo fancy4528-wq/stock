@@ -8,25 +8,66 @@ from unittest.mock import MagicMock
 from quantagent.data.validators.pit import (
     compare_adjust_factors,
     rule_pit_001_announced_before_ingested,
+    rule_pit_002_announced_at_required,
     rule_pit_003_no_interval_overlap,
     rule_pit_005_snapshot_on_rebalance,
     rule_pit_006_no_price_after_delist,
     rule_pit_007_delisted_security_retained,
+    rule_pit_008_document_chunk_visible_at,
     run_pit_checks,
 )
 
 
 def test_rule_pit_001_pass_and_fail() -> None:
     conn = MagicMock()
-    conn.execute.return_value.scalar_one.side_effect = [0, 0]
+    # exists, count, exists, count
+    conn.execute.return_value.scalar_one.side_effect = [True, 0, True, 0]
     ok = rule_pit_001_announced_before_ingested(conn)
     assert ok.status == "pass"
 
-    conn.execute.return_value.scalar_one.side_effect = [2, 0]
+    conn.execute.return_value.scalar_one.side_effect = [True, 2, True, 0]
     bad = rule_pit_001_announced_before_ingested(conn)
     assert bad.status == "fail"
     assert bad.affected_count == 1
     assert "financial_statement" in bad.affected_keys[0]
+
+
+def test_rule_pit_002_null_announced() -> None:
+    conn = MagicMock()
+    # 4 tables × (exists + has_column + count) — only first table present
+    # financial_statement: exists True, col True, count 0
+    # others: exists False
+    conn.execute.return_value.scalar_one.side_effect = [
+        True,
+        1,  # column exists
+        0,  # null count
+        False,
+        False,
+        False,
+    ]
+    ok = rule_pit_002_announced_at_required(conn)
+    assert ok.status == "pass"
+
+    conn.execute.return_value.scalar_one.side_effect = [
+        True,
+        1,
+        3,  # nulls
+        False,
+        False,
+        False,
+    ]
+    bad = rule_pit_002_announced_at_required(conn)
+    assert bad.status == "fail"
+    assert bad.code == "PIT_002"
+    assert "financial_statement:3" in bad.affected_keys
+
+
+def test_rule_pit_002_skipped_when_absent() -> None:
+    conn = MagicMock()
+    conn.execute.return_value.scalar_one.return_value = False
+    skipped = rule_pit_002_announced_at_required(conn)
+    assert skipped.status == "pass"
+    assert "skipped" in skipped.detail
 
 
 def test_rule_pit_003_overlap() -> None:
@@ -75,6 +116,28 @@ def test_rule_pit_006_and_007() -> None:
     assert fatal.affected_keys == ["99"]
 
 
+def test_rule_pit_008_absent_and_fail() -> None:
+    conn = MagicMock()
+    conn.execute.return_value.scalar_one.return_value = False
+    skipped = rule_pit_008_document_chunk_visible_at(conn)
+    assert skipped.status == "pass"
+    assert "skipped" in skipped.detail
+
+    # table exists, visible_at col exists, nulls=2, ingested_at col exists, late=1
+    conn.execute.return_value.scalar_one.side_effect = [
+        True,  # relation
+        1,  # visible_at col
+        2,  # null count
+        1,  # ingested_at col
+        1,  # late count
+    ]
+    bad = rule_pit_008_document_chunk_visible_at(conn)
+    assert bad.status == "fail"
+    assert bad.code == "PIT_008"
+    assert any("visible_at_null" in k for k in bad.affected_keys)
+    assert any("ingested_at" in k for k in bad.affected_keys)
+
+
 def test_run_pit_checks_aggregates() -> None:
     conn = MagicMock()
     conn.execute.return_value.scalar_one.return_value = 0
@@ -82,7 +145,16 @@ def test_run_pit_checks_aggregates() -> None:
     report = run_pit_checks(conn, check_date=date(2020, 1, 1), rebalance_dates=[])
     assert report.dataset == "pit_integrity"
     assert report.check_date == date(2020, 1, 1)
-    assert len(report.results) == 5
+    codes = [r.code for r in report.results]
+    assert codes == [
+        "PIT_001",
+        "PIT_002",
+        "PIT_003",
+        "PIT_005",
+        "PIT_006",
+        "PIT_007",
+        "PIT_008",
+    ]
 
 
 def test_compare_adjust_factors() -> None:

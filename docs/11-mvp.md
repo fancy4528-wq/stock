@@ -340,7 +340,7 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 - [ ] ⚠️ 退市股票保留（若池内有） — schema/`PIT_007` + `get_delisted_between` 测试有；MVP 池暂无退市样本
 - [x] ✅ 交易日历双源一致，覆盖 10 年 + 未来 1 年 — 双源 WARN；默认 `end=today+365`
 - [x] ✅ `is_limit_up/down`、`is_suspended` 字段正确
-- [ ] ⚠️ 全部 FATAL 级校验规则实现且能中止流程 — Loader abort + `run_pit_checks` 已进日报管道 + FATAL 写 `data/alerts/fatal.log`；仍缺 PIT_002/008
+- [x] ✅ 全部 FATAL 级校验规则实现且能中止流程 — Loader abort + `run_pit_checks`（含 PIT_001/002/003/007/008）已进日报管道 + FATAL 写 `data/alerts/fatal.log`；PIT_008 在 `document_chunk` 未建表时 skip
 - [x] ✅ 原始数据归档为 Parquet，可重放 normalize
 
 ### 8.2 PIT 正确性（最重要）
@@ -361,7 +361,7 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 - [x] ✅ `ep_ttm` 因子的 PIT 正确性单独验证
 - [x] ✅ Buy&Hold 基准回测可跑，结果记入 `baseline-results.md`
 - [x] ✅ 单因子回测结果与 IC 分析一致 — `backtest --strategy single_factor` + IC↔LS 符号对照
-- [ ] ⚠️ 回测含 T+1、涨跌停、停牌、成本 — `SimulatedBroker`/Shadow 有；`BuyAndHoldEngine` 仍裸跑
+- [x] ✅ 回测含 T+1、涨跌停、停牌、成本 — `SimulatedBroker`/Shadow + `BuyAndHoldEngine(apply_constraints=True)`（默认）；入场拒单计入 `unfilled`，费用计入 `total_fees`
 - [x] ✅ 涨跌停拒单有统计输出 — `summarize_unfilled` + 日报「拒单统计」
 
 ### 8.4 流程自动化
@@ -397,25 +397,25 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 - [x] ✅ README 的快速上手步骤可用
 - [x] ✅ 无硬编码市场常量（CI 检查通过） — `test_no_hardcoded_market_constants` + CI lint
 
-### 8.8 盘点汇总（2026-09-12 覆盖率冲刺后）
+### 8.8 盘点汇总（2026-09-12 PIT/B&H 补齐后）
 
 | 状态 | 项数 | 占比 |
 |---|---:|---:|
-| ✅ | 40 | 85% |
-| ⚠️ | 5 | 11% |
+| ✅ | 42 | 89% |
+| ⚠️ | 3 | 6% |
 | ❌ | 1 | 2% |
 | ❓ | 1 | 2% |
 | **合计** | **47** | |
 
-**Gate 1 结论：仍未正式通过**（连续 20 日日报未达标）；覆盖率与数据完整性已闭合。
+**Gate 1 结论：仍未正式通过**（连续 20 日日报未达标）；覆盖率、FATAL 规则、Buy&Hold 约束已闭合。
 
 **仍未闭合**
 
 1. ❌ 连续 20 交易日无中断日报（后台继续跑，约再 10 日）
-2. ⚠️ 月度 universe 历史回填；Buy&Hold 引擎约束；FATAL 规则全集（PIT_002/008）；调度无人值守证明；池内退市样本
+2. ⚠️ 月度 universe 历史回填；调度无人值守证明；池内退市样本
 3. ❓ Reporter 失败率长期统计
 
-**已在 2026-09-12 补齐（工程 + 10y 回填 + 覆盖率）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`、生存者偏差、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检、Shadow DB append-only、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**、**单元覆盖率 Gate PASS（~79% / 核心 ~90%）**
+**已在 2026-09-12 补齐（工程 + 10y 回填 + 覆盖率 + PIT/B&H）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`（含 PIT_002/008）、生存者偏差、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检、Shadow DB append-only、Buy&Hold→`SimulatedBroker` 约束、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**、**单元覆盖率 Gate PASS（~79% / 核心 ~90%）**
 
 ## 9. MVP 之后的第一件事
 
