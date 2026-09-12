@@ -570,7 +570,9 @@ def _run_backtest(
         f"  start_px={m.start_price:.4f} end_px={m.end_price:.4f}\n"
         f"  total_return={m.total_return:.4%} cagr={m.cagr:.4%}\n"
         f"  volatility={m.volatility:.4%} max_drawdown={m.max_drawdown:.4%}\n"
-        f"  sharpe={m.sharpe:.3f}"
+        f"  sharpe={m.sharpe:.3f}\n"
+        f"  constraints={bh_result.constraints_applied} "
+        f"fees={bh_result.total_fees:.2f} unfilled={len(bh_result.unfilled)}"
     )
     if write_baseline is not None:
         write_baseline.parent.mkdir(parents=True, exist_ok=True)

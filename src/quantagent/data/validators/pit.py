@@ -8,6 +8,37 @@ from sqlalchemy import Connection, text
 
 from quantagent.data.validators.report import RuleResult, ValidationReport
 
+# Tables that must carry a non-null announced_at (PIT_002). Absent tables are skipped.
+_PIT_002_TABLES: tuple[str, ...] = (
+    "financial_statement",
+    "financial_indicator",
+    "adjust_factor",
+    "macro_observation",
+)
+
+
+def _relation_exists(conn: Connection, name: str) -> bool:
+    found = conn.execute(
+        text("SELECT to_regclass(:n) IS NOT NULL"),
+        {"n": f"public.{name}"},
+    ).scalar_one()
+    return bool(found)
+
+
+def _column_exists(conn: Connection, table: str, column: str) -> bool:
+    n = conn.execute(
+        text(
+            """
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :t
+              AND column_name = :c
+            """
+        ),
+        {"t": table, "c": column},
+    ).scalar_one()
+    return int(n) > 0
+
 
 def rule_pit_001_announced_before_ingested(conn: Connection) -> RuleResult:
     """No row may have announced_at later than ingested_at (FATAL)."""
@@ -17,6 +48,8 @@ def rule_pit_001_announced_before_ingested(conn: Connection) -> RuleResult:
     )
     keys: list[str] = []
     for table, ann, ing in tables:
+        if not _relation_exists(conn, table):
+            continue
         rows = conn.execute(
             text(
                 f"""
@@ -33,6 +66,38 @@ def rule_pit_001_announced_before_ingested(conn: Connection) -> RuleResult:
         level="FATAL",
         status="fail" if keys else "pass",
         detail="announced_at > ingested_at" if keys else "ok",
+        affected_count=len(keys),
+        affected_keys=keys,
+    )
+
+
+def rule_pit_002_announced_at_required(conn: Connection) -> RuleResult:
+    """Financial / macro / adjust tables must not have announced_at IS NULL (FATAL)."""
+    keys: list[str] = []
+    checked = 0
+    for table in _PIT_002_TABLES:
+        if not _relation_exists(conn, table):
+            continue
+        if not _column_exists(conn, table, "announced_at"):
+            continue
+        checked += 1
+        n = conn.execute(
+            text(f"SELECT COUNT(*) FROM {table} WHERE announced_at IS NULL")
+        ).scalar_one()
+        if int(n) > 0:
+            keys.append(f"{table}:{int(n)}")
+    if checked == 0:
+        return RuleResult(
+            code="PIT_002",
+            level="FATAL",
+            status="pass",
+            detail="skipped: no announced_at tables present",
+        )
+    return RuleResult(
+        code="PIT_002",
+        level="FATAL",
+        status="fail" if keys else "pass",
+        detail="announced_at IS NULL" if keys else "ok",
         affected_count=len(keys),
         affected_keys=keys,
     )
@@ -154,19 +219,82 @@ def rule_pit_007_delisted_security_retained(conn: Connection) -> RuleResult:
     )
 
 
+def rule_pit_008_document_chunk_visible_at(conn: Connection) -> RuleResult:
+    """document_chunk.visible_at must be non-null and not after ingest time (FATAL).
+
+    Uses ``ingested_at`` when present, otherwise ``created_at`` (schema in docs/03).
+    Absent table → pass (knowledge base not yet migrated).
+    """
+    table = "document_chunk"
+    if not _relation_exists(conn, table):
+        return RuleResult(
+            code="PIT_008",
+            level="FATAL",
+            status="pass",
+            detail="skipped: document_chunk absent",
+        )
+    if not _column_exists(conn, table, "visible_at"):
+        return RuleResult(
+            code="PIT_008",
+            level="FATAL",
+            status="fail",
+            detail="document_chunk missing visible_at column",
+            affected_count=1,
+            affected_keys=["visible_at"],
+        )
+
+    null_n = conn.execute(
+        text("SELECT COUNT(*) FROM document_chunk WHERE visible_at IS NULL")
+    ).scalar_one()
+    keys: list[str] = []
+    if int(null_n) > 0:
+        keys.append(f"visible_at_null:{int(null_n)}")
+
+    ingest_col = None
+    if _column_exists(conn, table, "ingested_at"):
+        ingest_col = "ingested_at"
+    elif _column_exists(conn, table, "created_at"):
+        ingest_col = "created_at"
+
+    if ingest_col is not None:
+        late_n = conn.execute(
+            text(
+                f"""
+                SELECT COUNT(*) FROM document_chunk
+                WHERE visible_at IS NOT NULL
+                  AND {ingest_col} IS NOT NULL
+                  AND visible_at > {ingest_col}
+                """
+            )
+        ).scalar_one()
+        if int(late_n) > 0:
+            keys.append(f"visible_at_after_{ingest_col}:{int(late_n)}")
+
+    return RuleResult(
+        code="PIT_008",
+        level="FATAL",
+        status="fail" if keys else "pass",
+        detail="visible_at invalid vs ingest" if keys else "ok",
+        affected_count=len(keys),
+        affected_keys=keys,
+    )
+
+
 def run_pit_checks(
     conn: Connection,
     *,
     check_date: date | None = None,
     rebalance_dates: list[date] | None = None,
 ) -> ValidationReport:
-    """Run PIT_001/003/005/006/007 against the live database."""
+    """Run PIT_001/002/003/005/006/007/008 against the live database."""
     results = [
         rule_pit_001_announced_before_ingested(conn),
+        rule_pit_002_announced_at_required(conn),
         rule_pit_003_no_interval_overlap(conn),
         rule_pit_005_snapshot_on_rebalance(conn, rebalance_dates=rebalance_dates),
         rule_pit_006_no_price_after_delist(conn),
         rule_pit_007_delisted_security_retained(conn),
+        rule_pit_008_document_chunk_visible_at(conn),
     ]
     return ValidationReport(
         dataset="pit_integrity",
