@@ -115,6 +115,10 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
             lines.append(f"- {n.text}")
     else:
         lines.append("- （无触发项）")
+    if bundle.reject_stats:
+        lines.extend(["", "### 拒单统计", ""])
+        for reason, count in bundle.reject_stats.items():
+            lines.append(f"- {reason}: {count}")
 
     lines.extend(
         [

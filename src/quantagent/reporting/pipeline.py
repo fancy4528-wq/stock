@@ -22,6 +22,7 @@ from quantagent.agents.tools.market import (
 )
 from quantagent.core.repository.pit import PITRepository
 from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine
+from quantagent.evaluation.shadow.stats import summarize_unfilled
 from quantagent.evaluation.shadow.types import ShadowDayRecord
 from quantagent.execution.broker.simulated import PriceBar
 from quantagent.reporting.daily import write_daily_report
@@ -86,8 +87,13 @@ def build_synthetic_bundle(
     ]
     factors = [
         FactorRow(factor="mom_20d", long_short_1d=0.0031, ic_mean_20d=0.042),
+        FactorRow(factor="mom_60d", long_short_1d=0.0024, ic_mean_20d=0.038),
         FactorRow(factor="rev_5d", long_short_1d=-0.0018, ic_mean_20d=-0.028),
+        FactorRow(factor="vol_20d", long_short_1d=-0.0011, ic_mean_20d=-0.019),
         FactorRow(factor="turnover_20d", long_short_1d=0.0022, ic_mean_20d=0.035),
+        FactorRow(factor="turnover_ratio_5_60", long_short_1d=0.0015, ic_mean_20d=0.021),
+        FactorRow(factor="ep_ttm", long_short_1d=0.0009, ic_mean_20d=0.015),
+        FactorRow(factor="amihud_illiq_20d", long_short_1d=-0.0007, ic_mean_20d=-0.012),
     ]
     ranks = [
         FactorRankRow(
@@ -134,10 +140,14 @@ def build_synthetic_bundle(
         ],
         data_sources=[
             "行情：synthetic demo（无外部源）",
-            "因子：synthetic mom_20d / rev_5d / turnover_20d",
+            "因子：synthetic 8 MVP factors (mom/rev/vol/turnover/ep/illiq)",
         ],
         code_version="dev",
     )
+
+
+def _reject_stats(shadow_recs: list[ShadowDayRecord]) -> dict[str, int]:
+    return summarize_unfilled(shadow_recs)
 
 
 def _shadow_notes(shadow_recs: list[ShadowDayRecord]) -> list[RiskNote]:
@@ -173,9 +183,11 @@ async def run_daily_pipeline(
     out_dir: Path | str = Path("docs/daily-reports"),
     shadow_dir: Path | str = Path("data/shadow"),
     synthetic: bool = True,
-    write_cost_log: bool = False,
+    write_cost_log: bool = True,
     universe_code: str = "mvp_cn_50",
     repo: PITRepository | None = None,
+    run_id: str | None = None,
+    degraded: list[str] | None = None,
 ) -> Path:
     """Shadow step -> ReporterAgent -> markdown (synthetic or live PIT)."""
     costs = CostTracker()
@@ -200,6 +212,7 @@ async def run_daily_pipeline(
             baseline_symbols=symbols,
             factor_scores=scores,
         )
+        reject_stats = _reject_stats(shadow_recs)
         bundle = build_synthetic_bundle(
             as_of,
             run_id=run_id,
@@ -207,20 +220,22 @@ async def run_daily_pipeline(
             shadow_rows=_shadow_rows_from_recs(shadow_recs),
             risk_notes=_shadow_notes(shadow_recs)
             or [RiskNote(text="当前回撤在阈值内（阈值 -15%）")],
-        )
+        ).model_copy(update={"reject_stats": reject_stats})
         ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
     else:
         pit = repo or PITRepository()
         provisional = as_of or (date.today() - timedelta(days=1))
+        provisional_run_id = run_id or make_run_id(provisional, market)
         live = load_live_report_data(
             pit,
             as_of=provisional,
-            run_id=make_run_id(provisional, market),
+            run_id=provisional_run_id,
             market=market,
             universe_code=universe_code,
+            degraded=degraded,
         )
         as_of = live.as_of
-        run_id = make_run_id(as_of, market)
+        run_id = run_id or make_run_id(as_of, market)
         live = replace(
             live,
             run_id=run_id,
@@ -246,11 +261,12 @@ async def run_daily_pipeline(
             baseline_symbols=live.symbols,
             factor_scores=live.factor_scores,
         )
+        reject_stats = _reject_stats(shadow_recs)
         bundle = finalize_live_bundle(
             live,
             shadow_rows=_shadow_rows_from_recs(shadow_recs),
             risk_notes=_shadow_notes(shadow_recs),
-        )
+        ).model_copy(update={"reject_stats": reject_stats})
         ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
 
     report = await agent.run(ctx, bundle)

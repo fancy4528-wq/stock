@@ -40,15 +40,8 @@ def rule_cal_002_has_open_days(df: pl.DataFrame) -> RuleResult:
 def rule_cal_003_unique_dates(df: pl.DataFrame) -> RuleResult:
     if "trade_date" not in df.columns or "market" not in df.columns:
         return RuleResult(code="CAL_003", level="ERROR", status="pass", detail="skipped")
-    dup = (
-        df.group_by(["market", "trade_date"])
-        .len()
-        .filter(pl.col("len") > 1)
-    )
-    keys = [
-        f"{m}|{d}"
-        for m, d in zip(dup["market"], dup["trade_date"], strict=True)
-    ]
+    dup = df.group_by(["market", "trade_date"]).len().filter(pl.col("len") > 1)
+    keys = [f"{m}|{d}" for m, d in zip(dup["market"], dup["trade_date"], strict=True)]
     return RuleResult(
         code="CAL_003",
         level="FATAL",
@@ -61,17 +54,13 @@ def rule_cal_003_unique_dates(df: pl.DataFrame) -> RuleResult:
 
 def rule_cal_004_open_neighbors(df: pl.DataFrame) -> RuleResult:
     """Open days (except ends) should have prev/next trade dates."""
-    if not {"is_open", "prev_trade_date", "next_trade_date", "trade_date"}.issubset(
-        df.columns
-    ):
+    if not {"is_open", "prev_trade_date", "next_trade_date", "trade_date"}.issubset(df.columns):
         return RuleResult(code="CAL_004", level="WARN", status="pass", detail="skipped")
     opens = df.filter(pl.col("is_open")).sort("trade_date")
     if opens.height < 3:
         return RuleResult(code="CAL_004", level="WARN", status="pass", detail="too few")
     mid = opens.slice(1, opens.height - 2)
-    bad = mid.filter(
-        pl.col("prev_trade_date").is_null() | pl.col("next_trade_date").is_null()
-    )
+    bad = mid.filter(pl.col("prev_trade_date").is_null() | pl.col("next_trade_date").is_null())
     keys = [str(d) for d in bad["trade_date"].to_list()]
     return RuleResult(
         code="CAL_004",

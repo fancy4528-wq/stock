@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --all-groups
+
+      - name: Lint (ruff, mypy, lint_pit)
+        run: make lint
+
+      - name: Unit tests
+        run: make test-fast
+
+  # Integration / sentinel tests need Postgres (docker compose locally).
+  # Run locally: make up && make db-init && make test-sentinel
+  # See tests/conftest.py clean_pit_tables fixture.

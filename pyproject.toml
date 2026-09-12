@@ -65,6 +65,10 @@ disallow_any_generics = true
 plugins = ["pydantic.mypy"]
 mypy_path = "src"
 
+[[tool.mypy.overrides]]
+module = ["akshare.*", "akshare", "baostock.*", "baostock"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

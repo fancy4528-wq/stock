@@ -16,6 +16,8 @@ async def daily_report_job(
     synthetic: bool = True,
     universe_code: str = "mvp_cn_50",
     market: str = "CN",
+    run_id: str | None = None,
+    degraded: list[str] | None = None,
 ) -> Path:
     """Run daily report pipeline (synthetic demo or live PIT)."""
     if as_of is None:
@@ -28,6 +30,8 @@ async def daily_report_job(
         shadow_dir=shadow_dir,
         synthetic=synthetic,
         universe_code=universe_code,
+        run_id=run_id,
+        degraded=degraded,
     )
     mode = "synthetic" if synthetic else "live"
     print(f"daily_report_job wrote {path} (mode={mode} as_of={as_of})")

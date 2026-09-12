@@ -75,6 +75,8 @@ async def test_daily_live_pipeline_chains_refresh_then_report(tmp_path: Path) ->
                 "price_rows": 10,
                 "index_rows": 3,
                 "n_seeded": 12,
+                "run_id": "20260904-cn-daily",
+                "degraded": ["price_daily: primary=baostock unavailable; used fallback=akshare"],
             },
         )()
     )
@@ -89,6 +91,7 @@ async def test_daily_live_pipeline_chains_refresh_then_report(tmp_path: Path) ->
             "quantagent.scheduler.jobs.daily_pipeline.daily_report_job",
             fake_report,
         ),
+        patch("quantagent.scheduler.jobs.daily_pipeline._run_pit_checks"),
     ):
         path = await daily_live_pipeline_job(
             out_dir=out,
@@ -104,6 +107,10 @@ async def test_daily_live_pipeline_chains_refresh_then_report(tmp_path: Path) ->
     kwargs = fake_report.await_args.kwargs
     assert kwargs["synthetic"] is False
     assert kwargs["as_of"] == date(2026, 9, 4)
+    assert kwargs["run_id"] == "20260904-cn-daily"
+    assert kwargs["degraded"] == [
+        "price_daily: primary=baostock unavailable; used fallback=akshare"
+    ]
 
 
 @pytest.mark.asyncio

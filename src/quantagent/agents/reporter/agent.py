@@ -39,21 +39,39 @@ def _build_evidence(bundle: ReportBundle) -> list[Evidence]:
             evidence_id="ev-breadth",
             kind="price",
             ref_id=f"breadth:{bundle.run_id}",
-            excerpt=f"up={m.n_up} down={m.n_down} amount={m.total_amount:.0f}",
+            excerpt=(
+                f"up={m.n_up} down={m.n_down} amount={m.total_amount:.0f} "
+                f"amount_yi={m.total_amount / 1e8:.1f} "
+                f"amount_vs_20d={m.amount_vs_20d:+.4f} avg_turnover={m.avg_turnover:.4f}"
+            ),
             as_of=bundle.as_of,
         ),
     ]
-    if bundle.factors:
-        f0 = bundle.factors[0]
+    for i, sector in enumerate(bundle.sectors):
         evidence.append(
             Evidence(
-                evidence_id="ev-factor",
-                kind="factor",
-                ref_id=f"factor:{f0.factor}:{bundle.as_of.isoformat()}",
-                excerpt=f"{f0.factor} LS={f0.long_short_1d:+.4f}",
+                evidence_id=f"ev-sector-{i}",
+                kind="sector",
+                ref_id=f"sector:{sector.industry}:{bundle.as_of.isoformat()}",
+                excerpt=(
+                    f"{sector.industry} ret_1d={sector.ret_1d:+.4f} "
+                    f"ret_5d={sector.ret_5d:+.4f} ret_20d={sector.ret_20d:+.4f} n={sector.n_names}"
+                ),
                 as_of=bundle.as_of,
             )
         )
+    if bundle.factors:
+        for factor in bundle.factors:
+            ic = "" if factor.ic_mean_20d is None else f" ic20={factor.ic_mean_20d:+.4f}"
+            evidence.append(
+                Evidence(
+                    evidence_id=f"ev-factor-{factor.factor}",
+                    kind="factor",
+                    ref_id=f"factor:{factor.factor}:{bundle.as_of.isoformat()}",
+                    excerpt=f"{factor.factor} LS={factor.long_short_1d:+.4f}{ic}",
+                    as_of=bundle.as_of,
+                )
+            )
     else:
         evidence.append(
             Evidence(
@@ -64,14 +82,17 @@ def _build_evidence(bundle: ReportBundle) -> list[Evidence]:
                 as_of=bundle.as_of,
             )
         )
-    if bundle.shadow:
-        s0 = bundle.shadow[0]
+    for i, shadow in enumerate(bundle.shadow):
         evidence.append(
             Evidence(
-                evidence_id="ev-shadow",
+                evidence_id=f"ev-shadow-{i}",
                 kind="shadow",
-                ref_id=f"shadow:{s0.portfolio}:{bundle.as_of.isoformat()}",
-                excerpt=f"{s0.portfolio} ret_1d={s0.ret_1d:+.4f} cum={s0.ret_cum:+.4f}",
+                ref_id=f"shadow:{shadow.portfolio}:{bundle.as_of.isoformat()}",
+                excerpt=(
+                    f"{shadow.portfolio} ret_1d={shadow.ret_1d:+.4f} "
+                    f"cum={shadow.ret_cum:+.4f} mdd={shadow.max_drawdown:+.4f} "
+                    f"n={shadow.n_positions}"
+                ),
                 as_of=bundle.as_of,
             )
         )
@@ -121,24 +142,33 @@ def build_deterministic_report(bundle: ReportBundle) -> DailyReport:
         )
     if sectors:
         top = max(sectors, key=lambda s: s.ret_1d)
+        top_idx = next(i for i, s in enumerate(bundle.sectors) if s.industry == top.industry)
         observations.append(
             Observation(
                 statement=f"{top.industry} 当日平均涨幅 {_pct(top.ret_1d)}",
                 metric="sector_ret_1d",
                 value=float(top.ret_1d),
-                evidence_refs=["ev-mkt"],
+                evidence_refs=[f"ev-sector-{top_idx}"],
+            )
+        )
+    if factors:
+        f0 = factors[0]
+        observations.append(
+            Observation(
+                statement=f"{f0.factor} 多空 {_pct(f0.long_short_1d)}",
+                metric="factor_ls_1d",
+                value=float(f0.long_short_1d),
+                evidence_refs=[f"ev-factor-{f0.factor}"],
             )
         )
     if shadow:
         s0 = shadow[0]
-        ev_ids = [e.evidence_id for e in _build_evidence(bundle)]
-        shadow_ref = "ev-shadow" if "ev-shadow" in ev_ids else "ev-mkt"
         observations.append(
             Observation(
                 statement=f"{s0.portfolio} 当日收益 {_pct(s0.ret_1d)}",
                 metric="shadow_ret_1d",
                 value=float(s0.ret_1d),
-                evidence_refs=[shadow_ref],
+                evidence_refs=["ev-shadow-0"],
             )
         )
 

@@ -76,9 +76,7 @@ class PriceLoader:
                 persist_rule_results(conn, report, batch_id=batch_id)
                 id_map = self._ensure_securities(conn, df)
                 suspect = report.suspect_keys()
-                n = self._upsert_prices(
-                    conn, df, id_map=id_map, suspect=suspect, source=source
-                )
+                n = self._upsert_prices(conn, df, id_map=id_map, suspect=suspect, source=source)
 
             self._finish_batch(batch_id, status="success", row_count=n)
             return {"batch_id": batch_id, "rows_loaded": n, "status": "success"}

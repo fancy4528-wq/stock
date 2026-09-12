@@ -28,7 +28,12 @@ class BaostockPriceCollector(Collector):
     source = "baostock"
     dataset = "price_daily"
 
-    def __init__(self, archive_root: Path | None = None, *, rate_limit: float | None = None) -> None:
+    def __init__(
+        self,
+        archive_root: Path | None = None,
+        *,
+        rate_limit: float | None = None,
+    ) -> None:
         self.rate_limit = (
             rate_limit if rate_limit is not None else get_settings().baostock_rate_limit
         )
@@ -109,9 +114,7 @@ class BaostockPriceCollector(Collector):
         try:
             rows = await self._rate_limited(_call)
         except Exception as exc:  # noqa: BLE001
-            raise SourceUnavailableError(
-                f"baostock query failed for {code}: {exc}"
-            ) from exc
+            raise SourceUnavailableError(f"baostock query failed for {code}: {exc}") from exc
 
         if not rows:
             return pl.DataFrame()

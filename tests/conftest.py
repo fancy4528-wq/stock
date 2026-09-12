@@ -47,5 +47,17 @@ def clean_pit_tables(pg_engine: Engine) -> Engine:
         "trading_calendar",
     ]
     with pg_engine.begin() as conn:
+        has_shadow = conn.execute(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'shadow_day'
+                )
+                """
+            )
+        ).scalar()
+        if has_shadow:
+            tables = ["shadow_day", *tables]
         conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
     return pg_engine

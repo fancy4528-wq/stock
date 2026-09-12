@@ -79,6 +79,7 @@ class ReportBundle(BaseModel):
     quality: list[QualityCheck] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
     code_version: str = "dev"
+    reject_stats: dict[str, int] = Field(default_factory=dict)
 
 
 def get_market_overview(bundle: ReportBundle) -> MarketOverview:

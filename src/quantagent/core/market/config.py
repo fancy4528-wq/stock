@@ -27,9 +27,7 @@ class PriceLimitConfig(BaseModel):
     enabled: bool = True
     rules: list[PriceLimitRule] = Field(default_factory=list)
 
-    def for_security(
-        self, *, board: str, is_st: bool = False
-    ) -> tuple[float | None, float | None]:
+    def for_security(self, *, board: str, is_st: bool = False) -> tuple[float | None, float | None]:
         """Return ``(limit_up, limit_down)`` ratios for the first matching rule.
 
         ``None`` means no limit (e.g. IPO open days). Ratios are signed the same
@@ -58,11 +56,7 @@ def _match_limit_condition(condition: str, *, board: str, is_st: bool) -> bool:
     if raw.startswith("board in"):
         inside = raw.split("in", 1)[1].strip()
         if inside.startswith("[") and inside.endswith("]"):
-            items = [
-                part.strip().strip("'\"")
-                for part in inside[1:-1].split(",")
-                if part.strip()
-            ]
+            items = [part.strip().strip("'\"") for part in inside[1:-1].split(",") if part.strip()]
             return board in items
     return False
 
@@ -124,9 +118,7 @@ class MarketConfig(BaseModel):
     def lot_increment(self, board: str = "main") -> int:
         return int(self.lot_increment_by_board.get(board, self.min_lot_buy))
 
-    def price_limits(
-        self, *, board: str, is_st: bool = False
-    ) -> tuple[float | None, float | None]:
+    def price_limits(self, *, board: str, is_st: bool = False) -> tuple[float | None, float | None]:
         return self.price_limit.for_security(board=board, is_st=is_st)
 
     def estimate_fees(self, *, side: str, notional: float, quantity: float) -> float:

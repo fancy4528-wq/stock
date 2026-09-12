@@ -230,9 +230,10 @@ class FinancialLoader:
             period_type = row["period_type"]
             announced_at = row["announced_at"]
 
-            existing = conn.execute(
-                text(
-                    """
+            existing = (
+                conn.execute(
+                    text(
+                        """
                     SELECT revision, announced_at, net_profit, revenue, total_assets
                     FROM financial_statement
                     WHERE security_id = :sid
@@ -240,9 +241,12 @@ class FinancialLoader:
                       AND period_type = :period_type
                     ORDER BY revision DESC
                     """
-                ),
-                {"sid": sid, "period_end": period_end, "period_type": period_type},
-            ).mappings().all()
+                    ),
+                    {"sid": sid, "period_end": period_end, "period_type": period_type},
+                )
+                .mappings()
+                .all()
+            )
 
             if existing:
                 # Idempotent: same announced_at already stored → skip.

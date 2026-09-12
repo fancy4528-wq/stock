@@ -132,9 +132,7 @@ class PriceNormalizer:
             .alias("prev_close")
         )
         out = out.with_columns(
-            ((pl.col("volume") == 0) | (pl.col("amount").fill_null(0) == 0)).alias(
-                "is_suspended"
-            )
+            ((pl.col("volume") == 0) | (pl.col("amount").fill_null(0) == 0)).alias("is_suspended")
         )
         return out
 
@@ -142,14 +140,18 @@ class PriceNormalizer:
         """Derive prev_close from 涨跌幅 / 涨跌额 when present (single-day windows)."""
         if "涨跌幅" in cols:
             pct = pl.col("涨跌幅").cast(pl.Float64, strict=False) / 100.0
-            return pl.when((pct.is_not_null()) & (pct != -1.0)).then(
-                pl.col("收盘").cast(pl.Float64) / (1.0 + pct)
-            ).otherwise(pl.lit(None).cast(pl.Float64))
+            return (
+                pl.when((pct.is_not_null()) & (pct != -1.0))
+                .then(pl.col("收盘").cast(pl.Float64) / (1.0 + pct))
+                .otherwise(pl.lit(None).cast(pl.Float64))
+            )
         if "涨跌额" in cols:
             chg = pl.col("涨跌额").cast(pl.Float64, strict=False)
-            return pl.when(chg.is_not_null()).then(
-                pl.col("收盘").cast(pl.Float64) - chg
-            ).otherwise(pl.lit(None).cast(pl.Float64))
+            return (
+                pl.when(chg.is_not_null())
+                .then(pl.col("收盘").cast(pl.Float64) - chg)
+                .otherwise(pl.lit(None).cast(pl.Float64))
+            )
         return pl.lit(None).cast(pl.Float64)
 
     def _normalize_akshare_index(self, df: pl.DataFrame, batch: RawBatch) -> pl.DataFrame:
@@ -296,12 +298,7 @@ class PriceNormalizer:
             is_limit_up = False
             is_limit_down = False
 
-            if (
-                not suspended
-                and prev is not None
-                and float(prev) > 0
-                and close is not None
-            ):
+            if not suspended and prev is not None and float(prev) > 0 and close is not None:
                 up_ratio, down_ratio = self._market.price_limits(board=board, is_st=is_st)
                 if up_ratio is not None:
                     limit_up_px = round_limit_price(float(prev) * (1.0 + up_ratio))

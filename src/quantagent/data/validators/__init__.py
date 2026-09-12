@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 from sqlalchemy import Connection, bindparam, create_engine, text
@@ -15,6 +15,7 @@ from quantagent.data.validators.financial import FINANCIAL_STATEMENT_RULES
 from quantagent.data.validators.industry import INDUSTRY_RULES
 from quantagent.data.validators.price import PRICE_DAILY_RULES
 from quantagent.data.validators.report import RuleResult, ValidationReport
+from quantagent.shared.alerts import notify_data_quality_fatal
 from quantagent.shared.config import get_settings
 from quantagent.shared.errors import DataQualityError
 
@@ -84,6 +85,12 @@ class Validator:
 
         if report.has_fatal:
             fatal = next(r for r in report.results if r.failed and r.level == "FATAL")
+            run_id = (context.extra or {}).get("run_id")
+            notify_data_quality_fatal(
+                fatal.code,
+                fatal.detail,
+                run_id=str(run_id) if run_id else None,
+            )
             raise DataQualityError(f"{fatal.code}: {fatal.detail}")
         if report.has_error:
             err = next(r for r in report.results if r.failed and r.level == "ERROR")
@@ -94,9 +101,9 @@ class Validator:
 def _invoke_rule(rule: Any, df: pl.DataFrame, ctx: ValidationContext) -> RuleResult:
     """Call ``rule(df)`` or ``rule(df, ctx)`` depending on signature."""
     try:
-        return rule(df, ctx)
+        return cast(RuleResult, rule(df, ctx))
     except TypeError:
-        return rule(df)
+        return cast(RuleResult, rule(df))
 
 
 def persist_rule_results(

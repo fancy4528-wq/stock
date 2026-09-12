@@ -57,9 +57,7 @@ class AkshareCalendarCollector(Collector):
                 framed = framed.filter(pl.col("_td") <= end)
             raw = framed.drop("_td")
             if raw.is_empty():
-                raise SourceUnavailableError(
-                    f"akshare calendar empty after clip [{start}, {end}]"
-                )
+                raise SourceUnavailableError(f"akshare calendar empty after clip [{start}, {end}]")
 
         return self._archive.write(
             raw,
@@ -83,7 +81,7 @@ class AkshareCalendarCollector(Collector):
             reraise=True,
         )
         def _call() -> Any:
-            import akshare as ak  # type: ignore[import-untyped]
+            import akshare as ak
             import requests
 
             apply_proxy_bypass()

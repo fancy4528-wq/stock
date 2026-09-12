@@ -23,6 +23,10 @@ def test_as_of_is_keyword_only() -> None:
         repo.get_industry(["600519.SH"], date(2020, 1, 1))  # type: ignore[misc]
     with pytest.raises(TypeError):
         repo.get_universe(date(2020, 1, 1), name="mvp")  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        repo.get_security_names(["600519.SH"])  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        repo.latest_trade_date(["600519.SH"])  # type: ignore[misc]
 
 
 def test_assert_no_lookahead_passes() -> None:

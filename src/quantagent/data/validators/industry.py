@@ -57,11 +57,7 @@ def rule_ind_003_unique_l1_symbol(df: pl.DataFrame) -> RuleResult:
     )
     if members.is_empty():
         return RuleResult(code="IND_003", level="FATAL", status="pass", detail="ok")
-    dup = (
-        members.group_by("symbol")
-        .len()
-        .filter(pl.col("len") > 1)
-    )
+    dup = members.group_by("symbol").len().filter(pl.col("len") > 1)
     keys = [str(s) for s in dup["symbol"].to_list()]
     return RuleResult(
         code="IND_003",

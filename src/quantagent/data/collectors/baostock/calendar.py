@@ -43,9 +43,7 @@ class BaostockCalendarCollector(Collector):
 
         raw = await self._fetch_range(start=start, end=end)
         if raw.is_empty():
-            raise SourceUnavailableError(
-                f"baostock.query_trade_dates empty for [{start}, {end}]"
-            )
+            raise SourceUnavailableError(f"baostock.query_trade_dates empty for [{start}, {end}]")
 
         return self._archive.write(
             raw,
@@ -69,20 +67,16 @@ class BaostockCalendarCollector(Collector):
             reraise=True,
         )
         def _call() -> list[dict[str, str]]:
-            import baostock as bs  # type: ignore[import-untyped]
+            import baostock as bs
 
             apply_proxy_bypass()
             lg = bs.login()
             if lg.error_code != "0":
                 raise ConnectionError(f"baostock login failed: {lg.error_msg}")
             try:
-                rs = bs.query_trade_dates(
-                    start_date=start.isoformat(), end_date=end.isoformat()
-                )
+                rs = bs.query_trade_dates(start_date=start.isoformat(), end_date=end.isoformat())
                 if rs.error_code != "0":
-                    raise ConnectionError(
-                        f"baostock.query_trade_dates failed: {rs.error_msg}"
-                    )
+                    raise ConnectionError(f"baostock.query_trade_dates failed: {rs.error_msg}")
                 rows: list[dict[str, str]] = []
                 while rs.error_code == "0" and rs.next():
                     data = rs.get_row_data()
@@ -99,9 +93,7 @@ class BaostockCalendarCollector(Collector):
         try:
             rows = await self._rate_limited(_call)
         except Exception as exc:  # noqa: BLE001
-            raise SourceUnavailableError(
-                f"baostock.query_trade_dates failed: {exc}"
-            ) from exc
+            raise SourceUnavailableError(f"baostock.query_trade_dates failed: {exc}") from exc
 
         if not rows:
             return pl.DataFrame()

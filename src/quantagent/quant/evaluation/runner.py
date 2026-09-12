@@ -18,7 +18,8 @@ from quantagent.quant.evaluation.ic import (
 )
 from quantagent.quant.evaluation.quantile import quantile_analysis
 from quantagent.quant.evaluation.types import FactorTestResult
-from quantagent.quant.features.base import entity_col
+from quantagent.quant.features.base import FactorInput, entity_col
+from quantagent.quant.features.registry import MVP_FACTOR_CODES, MVP_FACTORS
 from quantagent.quant.labels.targets import attach_forward_returns, forward_return_col
 
 # docs/07-quant-engine.md §3.2
@@ -348,4 +349,68 @@ def synthetic_eval_panel(
         base.with_columns(pl.Series("close", closes))
         .drop("_fwd5")
         .select(["security_id", "trade_date", "close", "good_factor", "noise_factor"])
+    )
+
+
+def _trading_dates(*, n_dates: int, start: date) -> list[date]:
+    dates: list[date] = []
+    d = start
+    while len(dates) < n_dates:
+        if d.weekday() < 5:
+            dates.append(d)
+        d += timedelta(days=1)
+    return dates
+
+
+def synthetic_mvp_eval_panel(
+    *,
+    n_dates: int = 120,
+    n_names: int = 40,
+    seed: int = 42,
+    signal_strength: float = 0.4,
+    start: date = date(2024, 1, 2),
+) -> pl.DataFrame:
+    """Build OHLCV panel and compute all 8 MVP factors for W6 evaluation."""
+    rng = np.random.default_rng(seed)
+    dates = _trading_dates(n_dates=n_dates, start=start)
+    rows: list[dict[str, object]] = []
+
+    for sid in range(1, n_names + 1):
+        closes = [100.0 + sid * 0.05]
+        for i in range(1, len(dates)):
+            if i >= 21:
+                mom = closes[i - 1] / closes[i - 21] - 1.0
+                ret = signal_strength * mom * 0.5 + float(rng.normal(0, 0.015))
+            else:
+                ret = float(rng.normal(0, 0.02))
+            closes.append(closes[-1] * (1.0 + ret))
+
+        for i, td in enumerate(dates):
+            close = closes[i]
+            prev = closes[i - 1] if i > 0 else close
+            turnover = 0.01 + float(rng.uniform(0, 0.03))
+            amount = close * 1_000_000.0 * turnover
+            rows.append(
+                {
+                    "security_id": sid,
+                    "trade_date": td,
+                    "open": prev,
+                    "high": max(prev, close) * 1.005,
+                    "low": min(prev, close) * 0.995,
+                    "close": close,
+                    "volume": 1_000_000.0,
+                    "amount": amount,
+                    "turnover_rate": turnover,
+                    "pe_ttm": 10.0 + sid * 0.1 + float(rng.uniform(-2, 2)),
+                }
+            )
+
+    prices = pl.DataFrame(rows).sort(["security_id", "trade_date"])
+    data = FactorInput(prices=prices, as_of=dates[-1])
+    factor_cols: list[pl.Series] = []
+    for code in MVP_FACTOR_CODES:
+        factor_cols.append(MVP_FACTORS[code].compute(data))
+
+    return prices.with_columns(factor_cols).select(
+        ["security_id", "trade_date", "close", *MVP_FACTOR_CODES]
     )

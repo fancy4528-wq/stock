@@ -47,16 +47,17 @@ def _run_evaluate(
 
     from quantagent.quant.evaluation import (
         evaluate_factors,
-        synthetic_eval_panel,
+        synthetic_mvp_eval_panel,
         write_factor_reports,
     )
+    from quantagent.quant.features.registry import MVP_FACTOR_CODES
 
     if synthetic or panel_path is None:
         if panel_path is not None:
             print("evaluate: ignoring --panel because --synthetic was set", file=sys.stderr)
-        panel = synthetic_eval_panel()
-        factor_cols = ["good_factor", "noise_factor"]
-        print(f"market={market} mode=synthetic rows={panel.height}")
+        panel = synthetic_mvp_eval_panel()
+        factor_cols = list(MVP_FACTOR_CODES)
+        print(f"market={market} mode=synthetic mvp_factors={len(factor_cols)} rows={panel.height}")
     else:
         panel = pl.read_parquet(panel_path)
         skip = {
@@ -95,6 +96,25 @@ def _run_evaluate(
         )
     print(f"wrote {len(paths)} files under {out_dir}")
     return 0
+
+
+def _load_adjust(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
+    import polars as pl
+
+    from quantagent.data.loaders import AdjustLoader
+
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
+    result = AdjustLoader().load(
+        df,
+        source=source,
+        raw_path=raw_path,
+        target_date=target_date,
+    )
+    print(
+        f"loaded adjust_factor batch_id={result['batch_id']} rows={result['rows_loaded']} "
+        f"status={result['status']}"
+    )
 
 
 def _load_prices(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
@@ -230,10 +250,7 @@ async def _ingest_calendar(
         other_df = CalendarNormalizer().normalize(other_batch, start=chk_start, end=end)
         dual = compare_calendar_open_days(df, other_df, window_start=chk_start)
         if dual.status == "warn":
-            print(
-                f"calendar dual-check WARN: {dual.detail} "
-                f"window=[{chk_start}, {end}]"
-            )
+            print(f"calendar dual-check WARN: {dual.detail} window=[{chk_start}, {end}]")
             samples = (dual.actual or {}).get("primary_only") or []
             if samples:
                 print(f"  akshare_only sample: {samples}")
@@ -247,6 +264,10 @@ async def _ingest_calendar(
         _load_calendar(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
 
 
+def _peer_price_source(source: str) -> str:
+    return "baostock" if source == "akshare" else "akshare"
+
+
 async def _ingest_prices(
     *,
     symbols: list[str],
@@ -256,11 +277,13 @@ async def _ingest_prices(
     archive_root: Path | None,
     load: bool,
     kind: str,
+    dual_check: bool = False,
 ) -> None:
     from quantagent.data.collectors.akshare import AkshareIndexCollector, AksharePriceCollector
     from quantagent.data.collectors.baostock import BaostockPriceCollector
     from quantagent.data.collectors.base import Collector
     from quantagent.data.normalizers.price import PriceNormalizer
+    from quantagent.data.ops.price_dual_check import validate_prices_dual
 
     collector: Collector
     if kind == "index":
@@ -282,8 +305,43 @@ async def _ingest_prices(
     )
     if df.height:
         print(df.head(3))
+
+    if dual_check and kind == "price" and df.height:
+        peer_src = _peer_price_source(source)
+        if peer_src == "akshare":
+            peer_collector: Collector = AksharePriceCollector(archive_root=archive_root)
+        else:
+            peer_collector = BaostockPriceCollector(archive_root=archive_root)
+        peer_batch = await peer_collector.collect(end, symbols=symbols, start=start, end=end)
+        peer_df = PriceNormalizer().normalize(peer_batch)
+        validate_prices_dual(df, peer_df, check_date=end, persist=False)
+
     if load and df.height:
         _load_prices(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
+
+
+async def _ingest_adjust_factor(
+    *,
+    symbols: list[str],
+    start: date,
+    end: date,
+    archive_root: Path | None,
+    load: bool,
+) -> None:
+    from quantagent.data.collectors.baostock import BaostockAdjustCollector
+    from quantagent.data.normalizers.adjust import AdjustNormalizer
+
+    collector = BaostockAdjustCollector(archive_root=archive_root)
+    batch = await collector.collect(end, symbols=symbols, start=start, end=end)
+    df = AdjustNormalizer().normalize(batch)
+    print(
+        f"collected source={batch.source} dataset={batch.dataset} batch_id={batch.batch_id} "
+        f"rows_raw={batch.row_count} rows_norm={df.height} path={batch.raw_path}"
+    )
+    if df.height:
+        print(df.head(3))
+    if load and df.height:
+        _load_adjust(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
 
 
 async def _ingest_financials(
@@ -464,20 +522,50 @@ def _run_backtest(
     *,
     strategy: str,
     symbol: str,
+    factor: str,
     start: date,
     end: date,
     write_baseline: Path | None,
 ) -> int:
+    if strategy == "single_factor":
+        from quantagent.backtest.single_factor import (
+            SingleFactorBacktest,
+            SingleFactorBacktestConfig,
+        )
+
+        cfg = SingleFactorBacktestConfig(factor_code=factor)
+        result = SingleFactorBacktest().run(cfg)
+        print(result.summary)
+        print(f"  admission={'PASS' if result.admission_pass else 'FAIL'}")
+        for note in result.admission_notes[:6]:
+            print(f"  - {note}")
+        note_dir = Path("docs/factor-reports")
+        note_dir.mkdir(parents=True, exist_ok=True)
+        note_path = note_dir / f"{factor}-backtest-note.md"
+        note_body = (
+            f"# Single-factor backtest note: `{factor}`\n\n"
+            f"Generated: {date.today().isoformat()}\n\n"
+            f"- IC mean: {result.ic_mean:+.4f}\n"
+            f"- Long-short return: {result.long_short_return:+.4%}\n"
+            f"- IC sign matches LS sign: **{'yes' if result.signs_match else 'NO'}**\n"
+            f"- W6 admission: **{'PASS' if result.admission_pass else 'FAIL'}**\n\n"
+            "Proxy: synthetic panel IC long-short used as thin backtest consistency check "
+            "(see `SingleFactorBacktest` in `backtest/single_factor.py`).\n"
+        )
+        note_path.write_text(note_body, encoding="utf-8")
+        print(f"wrote {note_path}")
+        return 0
+
     if strategy != "buy_and_hold":
         print(f"unsupported strategy: {strategy}", file=sys.stderr)
         return 2
 
     from quantagent.backtest import BuyAndHoldConfig, BuyAndHoldEngine
 
-    result = BuyAndHoldEngine().run(BuyAndHoldConfig(symbol=symbol, start=start, end=end))
-    m = result.metrics
+    bh_result = BuyAndHoldEngine().run(BuyAndHoldConfig(symbol=symbol, start=start, end=end))
+    m = bh_result.metrics
     print(
-        f"backtest strategy={result.strategy} symbol={result.symbol}\n"
+        f"backtest strategy={bh_result.strategy} symbol={bh_result.symbol}\n"
         f"  window={m.start}..{m.end} n_days={m.n_days}\n"
         f"  start_px={m.start_price:.4f} end_px={m.end_price:.4f}\n"
         f"  total_return={m.total_return:.4%} cagr={m.cagr:.4%}\n"
@@ -489,7 +577,7 @@ def _run_backtest(
         body = (
             f"# Baseline Results\n\n"
             f"Generated: {date.today().isoformat()}\n\n"
-            f"## Buy&Hold — {result.symbol}\n\n"
+            f"## Buy&Hold — {bh_result.symbol}\n\n"
             f"| Metric | Value |\n|---|---|\n"
             f"| Window | {m.start} .. {m.end} |\n"
             f"| Trading days | {m.n_days} |\n"
@@ -633,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
         "--dataset",
         choices=(
             "price_daily",
+            "adjust_factor",
             "financial_statement",
             "index",
             "security_industry",
@@ -662,7 +751,9 @@ def main(argv: list[str] | None = None) -> int:
     ingest.add_argument(
         "--dual-check",
         action="store_true",
-        help="For trading_calendar: compare akshare vs baostock open days",
+        help=(
+            "Compare akshare vs baostock: trading_calendar open days; price_daily close (PX_009)"
+        ),
     )
     ingest.add_argument(
         "--universe",
@@ -672,6 +763,11 @@ def main(argv: list[str] | None = None) -> int:
 
     bt = sub.add_parser("backtest", help="Run backtest strategies")
     bt.add_argument("--strategy", default="buy_and_hold")
+    bt.add_argument(
+        "--factor",
+        default="mom_20d",
+        help="MVP factor code for --strategy single_factor",
+    )
     bt.add_argument("--symbol", default="000300.SH", help="Benchmark symbol (default CSI300)")
     bt.add_argument("--start", type=_parse_date, default=date(2015, 1, 1))
     bt.add_argument("--end", type=_parse_date, default=date.today())
@@ -846,6 +942,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_backtest(
             strategy=args.strategy,
             symbol=args.symbol,
+            factor=args.factor,
             start=args.start,
             end=args.end,
             write_baseline=args.write_baseline,
@@ -938,7 +1035,9 @@ def main(argv: list[str] | None = None) -> int:
             symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
 
         if args.dataset == "trading_calendar":
-            end = args.end or date.today()
+            from datetime import timedelta
+
+            end = args.end or (date.today() + timedelta(days=365))
             start = args.start
             if args.daily:
                 start = end = date.today()
@@ -994,6 +1093,29 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
+        if args.dataset == "adjust_factor":
+            if args.daily:
+                today = date.today()
+                start = end = today
+            elif args.start is None or args.end is None:
+                print(
+                    "adjust_factor ingest requires --start/--end or --daily",
+                    file=sys.stderr,
+                )
+                return 2
+            else:
+                start, end = args.start, args.end
+            asyncio.run(
+                _ingest_adjust_factor(
+                    symbols=symbols,
+                    start=start,
+                    end=end,
+                    archive_root=args.archive_root,
+                    load=args.load,
+                )
+            )
+            return 0
+
         kind = "index" if args.dataset == "index" else "price"
         if args.daily:
             today = date.today()
@@ -1016,6 +1138,7 @@ def main(argv: list[str] | None = None) -> int:
                 archive_root=args.archive_root,
                 load=args.load,
                 kind=kind,
+                dual_check=bool(args.dual_check),
             )
         )
         return 0

@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from quantagent.core.market import MarketConfig, load_market_config
+from quantagent.core.repository.shadow_day import ShadowDayStore
 from quantagent.decision.portfolio.lots import floor_to_lot
 from quantagent.evaluation.journal.store import AppendOnlyJournal
 from quantagent.evaluation.shadow.types import ShadowConfig, ShadowDayRecord, ShadowPortfolioId
@@ -54,6 +55,7 @@ class ShadowEngine:
         self.code_version = code_version
         root = Path(store_dir)
         root.mkdir(parents=True, exist_ok=True)
+        self._db_store = ShadowDayStore.try_connect()
         self._states: dict[ShadowPortfolioId, ShadowPortfolioState] = {
             "shadow_baseline": ShadowPortfolioState(
                 "shadow_baseline",
@@ -163,6 +165,8 @@ class ShadowEngine:
                 notes=notes,
             )
             st.journal.append(rec)
+            if self._db_store is not None:
+                self._db_store.append(rec)
             records.append(rec)
         return records
 

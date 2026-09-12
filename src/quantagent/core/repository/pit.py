@@ -53,8 +53,29 @@ class PITRepository:
         by_symbol = self._resolve_symbol_ids(conn, symbols)
         return [by_symbol[s] for s in symbols]
 
-    def get_security_names(self, symbols: list[str]) -> dict[str, str]:
+    def get_delisted_between(self, start: date, end: date) -> list[str]:
+        """Symbols with ``delist_date`` in ``[start, end]`` (inclusive)."""
+        if end < start:
+            return []
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT symbol
+                    FROM security
+                    WHERE delist_date IS NOT NULL
+                      AND delist_date >= :start
+                      AND delist_date <= :end
+                    ORDER BY symbol
+                    """
+                ),
+                {"start": start, "end": end},
+            ).fetchall()
+        return [str(r[0]) for r in rows]
+
+    def get_security_names(self, symbols: list[str], *, as_of: date) -> dict[str, str]:
         """Return ``symbol -> name`` for known securities (empty dict if none)."""
+        _ = as_of  # current name lookup; signature enforces PIT discipline at call sites
         if not symbols:
             return {}
         with self._engine.connect() as conn:
@@ -100,38 +121,23 @@ class PITRepository:
             out.append(d if isinstance(d, date) else date.fromisoformat(str(d)))
         return out
 
-    def latest_trade_date(
-        self,
-        symbols: list[str],
-        *,
-        on_or_before: date | None = None,
-    ) -> date | None:
-        """Max ``trade_date`` present in ``price_daily`` for the given symbols."""
+    def latest_trade_date(self, symbols: list[str], *, as_of: date) -> date | None:
+        """Max ``trade_date`` in ``price_daily`` for symbols with ``trade_date <= as_of``."""
         if not symbols:
             return None
         with self._engine.connect() as conn:
             sec_ids = self._resolve_ids(conn, symbols)
             if not sec_ids:
                 return None
-            if on_or_before is None:
-                stmt = text(
-                    """
-                    SELECT max(trade_date) AS d
-                    FROM price_daily
-                    WHERE security_id = ANY(:ids)
-                    """
-                ).bindparams(bindparam("ids", type_=ARRAY(BIGINT())))
-                row = conn.execute(stmt, {"ids": sec_ids}).mappings().one()
-            else:
-                stmt = text(
-                    """
-                    SELECT max(trade_date) AS d
-                    FROM price_daily
-                    WHERE security_id = ANY(:ids)
-                      AND trade_date <= :end
-                    """
-                ).bindparams(bindparam("ids", type_=ARRAY(BIGINT())))
-                row = conn.execute(stmt, {"ids": sec_ids, "end": on_or_before}).mappings().one()
+            stmt = text(
+                """
+                SELECT max(trade_date) AS d
+                FROM price_daily
+                WHERE security_id = ANY(:ids)
+                  AND trade_date <= :as_of
+                """
+            ).bindparams(bindparam("ids", type_=ARRAY(BIGINT())))
+            row = conn.execute(stmt, {"ids": sec_ids, "as_of": as_of}).mappings().one()
         d = row["d"]
         if d is None:
             return None
@@ -244,6 +250,8 @@ class PITRepository:
                 .replace_strict(id_to_symbol, return_dtype=pl.Utf8)
                 .alias("symbol")
             )
+            if "valid_from" in df.columns:
+                assert_no_lookahead(df, as_of, "valid_from")
         return df
 
     def get_universe(self, *, as_of: date, name: str) -> pl.DataFrame:
@@ -256,4 +264,7 @@ class PITRepository:
                 .mappings()
                 .all()
             )
-        return pl.DataFrame([dict(r) for r in rows]) if rows else pl.DataFrame()
+        df = pl.DataFrame([dict(r) for r in rows]) if rows else pl.DataFrame()
+        if not df.is_empty() and "snapshot_date" in df.columns:
+            assert_no_lookahead(df, as_of, "snapshot_date")
+        return df

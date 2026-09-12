@@ -218,16 +218,12 @@ def test_B4_px005_boundary_50pct() -> None:
 
 
 def test_C1_ex_div_with_record_ok() -> None:
-    df = pl.DataFrame(
-        [_px(prev_close=9.5, prior_close=10.0, has_adjust_factor=True, close=9.6)]
-    )
+    df = pl.DataFrame([_px(prev_close=9.5, prior_close=10.0, has_adjust_factor=True, close=9.6)])
     assert rule_px_012_prev_close_ex_div(df).status == "pass"
 
 
 def test_C2_ex_div_without_record_errors() -> None:
-    df = pl.DataFrame(
-        [_px(prev_close=9.5, prior_close=10.0, has_adjust_factor=False, close=9.6)]
-    )
+    df = pl.DataFrame([_px(prev_close=9.5, prior_close=10.0, has_adjust_factor=False, close=9.6)])
     r = rule_px_012_prev_close_ex_div(df)
     assert r.status == "fail"
     assert r.code == "PX_012"
@@ -342,6 +338,7 @@ async def test_F1_empty_primary_raises_not_silent() -> None:
     from quantagent.data.collectors.akshare.price import AksharePriceCollector
 
     c = AksharePriceCollector(archive_root=Path("."))
+
     async def _empty(*_a: object, **_k: object) -> pl.DataFrame:
         return pl.DataFrame()
 
@@ -363,10 +360,7 @@ def test_F2_px011_coverage_below_99() -> None:
 
 
 def test_F3_px010_stuck_price() -> None:
-    rows = [
-        _px(trade_date=date(2026, 9, 1) + timedelta(days=i), close=10.0)
-        for i in range(5)
-    ]
+    rows = [_px(trade_date=date(2026, 9, 1) + timedelta(days=i), close=10.0) for i in range(5)]
     assert rule_px_010_stuck_price(pl.DataFrame(rows)).status == "warn"
 
 
@@ -388,19 +382,25 @@ def test_F5_px009_dual_source_diff() -> None:
 
 
 def test_G5_report_evidence_traceable_to_values() -> None:
-    """G5: sample five figures from a live report and match Evidence/source facts."""
-    report = Path("docs/daily-reports/2026-09-07.md")
-    if not report.is_file():
-        pytest.skip("report file missing")
-    text = report.read_text(encoding="utf-8")
-    # Five numbers that must appear with their Evidence anchors
-    checks = [
-        ("4575.02", "000300.SH close=4575.02"),
-        ("+0.59%", "ret_1d=+0.0059"),
-        ("1092.6", "amount=109255752330"),
-        ("-2.55%", "mom_20d LS=-0.0255"),
-        ("-0.71%", "cum=-0.0071"),
-    ]
-    for display, evidence in checks:
-        assert display in text, f"missing display number {display}"
-        assert evidence in text, f"missing evidence anchor {evidence}"
+    """G5: twenty figures from deterministic report trace to Evidence or bundle fields."""
+    from quantagent.agents.reporter import build_deterministic_report
+    from quantagent.agents.reporter.traceability import (
+        assert_figures_traceable,
+        bundle_trace_text,
+    )
+    from quantagent.reporting.daily import render_daily_report
+    from quantagent.reporting.pipeline import build_synthetic_bundle
+
+    bundle = build_synthetic_bundle(date(2026, 9, 7))
+    report = build_deterministic_report(bundle)
+    assert_figures_traceable(
+        render_daily_report(report, bundle),
+        evidence_excerpts=[e.excerpt or "" for e in report.evidence],
+        bundle_text=bundle_trace_text(bundle),
+        sample_size=20,
+    )
+    live = Path("docs/daily-reports/2026-09-07.md")
+    if live.is_file():
+        text = live.read_text(encoding="utf-8")
+        assert "Evidence" in text
+        assert "数据显示" in text

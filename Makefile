@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ingest-industry ingest-calendar ingest-daily test lint smoke
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -18,6 +18,8 @@ db-init:        ## 初始化数据库
 db-migrate:     ## 生成迁移
 	uv run alembic revision --autogenerate -m "$(MSG)"
 
+ingest: ingest-universe ## 拉取 MVP 股票池（ingest-universe 别名）
+
 ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
 	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01 --end $$(date +%F) --load --source baostock
 
@@ -30,8 +32,8 @@ ingest-daily:   ## 每日增量：宇宙行情+沪深300 + seed snapshot（A4）
 ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 过滤）
 	uv run python -m quantagent.cli ingest --dataset security_industry --universe mvp_cn_50 --load --source akshare
 
-ingest-calendar: ## A 股交易日历入库（akshare 主源；加 --dual-check 对比 baostock）
-	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01
+ingest-calendar: ## A 股交易日历入库（akshare 主源；加 --dual-check 对比 baostock；end 默认 today+1y）
+	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01 --end $$(uv run python -c "from datetime import date,timedelta;print((date.today()+timedelta(days=365)).isoformat())")
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN
@@ -85,6 +87,7 @@ lint:           ## 检查
 	uv run ruff check src tests
 	uv run ruff format --check src tests
 	uv run mypy src
+	uv run python scripts/lint_pit.py
 
 fix:            ## 自动修复
 	uv run ruff check --fix src tests

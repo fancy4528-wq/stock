@@ -67,9 +67,7 @@ class AkshareFinancialCollector(Collector):
                 )
 
         if not frames:
-            raise SourceUnavailableError(
-                f"akshare financial sheets empty for {symbols}"
-            )
+            raise SourceUnavailableError(f"akshare financial sheets empty for {symbols}")
 
         raw = pl.concat(frames, how="diagonal_relaxed")
         return self._archive.write(
@@ -108,9 +106,7 @@ class AkshareFinancialCollector(Collector):
         try:
             pdf = await self._rate_limited(_call)
         except Exception as exc:  # noqa: BLE001
-            raise SourceUnavailableError(
-                f"akshare.{iface} failed for {em_symbol}: {exc}"
-            ) from exc
+            raise SourceUnavailableError(f"akshare.{iface} failed for {em_symbol}: {exc}") from exc
 
         if pdf is None:
             return pl.DataFrame()

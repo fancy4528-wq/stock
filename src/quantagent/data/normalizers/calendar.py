@@ -153,9 +153,7 @@ class CalendarNormalizer:
             opens = [d for d in opens if d >= start]
         if end is not None:
             opens = [d for d in opens if d <= end]
-        return expand_dense_calendar(
-            opens, market=market, source=source, start=start, end=end
-        )
+        return expand_dense_calendar(opens, market=market, source=source, start=start, end=end)
 
     def _normalize_baostock(
         self,
@@ -168,9 +166,7 @@ class CalendarNormalizer:
     ) -> pl.DataFrame:
         cols = set(df.columns)
         if "calendar_date" not in cols or "is_trading_day" not in cols:
-            raise DataError(
-                "baostock calendar requires calendar_date + is_trading_day columns"
-            )
+            raise DataError("baostock calendar requires calendar_date + is_trading_day columns")
         dates = _parse_date_series(df.get_column("calendar_date"))
         flags = [
             str(v).strip() in {"1", "1.0", "true", "True"}
