@@ -331,7 +331,7 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ### 8.1 数据正确性
 
-- [ ] ❌ 50 支池内标的 10 年日线完整，缺失率 < 1% — 现仅 ~2025-01～2026-09（约 407 日/只）；需长窗回填
+- [x] ✅ 50 支池内标的 10 年日线完整，缺失率 < 1% — 2015-01-05～2026-09-11；上市后缺失率 **0.00%**（`scripts/audit_price_completeness.py`）；含 IPO 前的 naive 缺口约 5.4% 属正常
 - [x] ✅ 双源行情校验通过，差异 < 0.5% — `PX_009` + `attach_peer_closes`；`--dual-check` / daily_refresh 已接入
 - [x] ✅ 财务数据带 `announced_at`，修订产生新 revision
 - [x] ✅ 复权因子 PIT，存未复权价 — OHLC 未复权 + `adjust_factor` collector/loader（baostock）+ revision
@@ -401,23 +401,22 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 | 状态 | 项数 | 占比 |
 |---|---:|---:|
-| ✅ | 38 | 81% |
+| ✅ | 39 | 83% |
 | ⚠️ | 5 | 11% |
-| ❌ | 3 | 6% |
+| ❌ | 2 | 4% |
 | ❓ | 1 | 2% |
 | **合计** | **47** | |
 
-**Gate 1 结论：仍未正式通过**（时间型与 10 年完整性未达标），但可补工程项已基本闭合。
+**Gate 1 结论：仍未正式通过**（连续 20 日日报与覆盖率未达标），数据完整性（含 10 年）已闭合。
 
-**仍未闭合（需时间或大回填）**
+**仍未闭合**
 
 1. ❌ 连续 20 交易日无中断日报（后台继续跑，约再 10 日）
-2. ❌ 50 池 10 年日线缺失率 < 1%（长窗 `make ingest-universe` / 分批回填）
-3. ❌ 测试覆盖率 > 70% / 核心 > 85%
-4. ⚠️ 月度 universe 历史回填；Buy&Hold 引擎约束；FATAL 规则全集（PIT_002/008）；调度无人值守证明；池内退市样本
-5. ❓ Reporter 失败率长期统计
+2. ❌ 测试覆盖率 > 70% / 核心 > 85%（现约 65%）
+3. ⚠️ 月度 universe 历史回填；Buy&Hold 引擎约束；FATAL 规则全集（PIT_002/008）；调度无人值守证明；池内退市样本
+4. ❓ Reporter 失败率长期统计
 
-**已在本次补齐**：双源行情接入、`adjust_factor` 入库、日历 +1y、FATAL 告警、源降级、`run_pit` 入管道、生存者偏差、`lint_pit`/CI、as_of/assert 补全、8 因子 IC 报告、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检记录、Shadow DB append-only、mypy/ruff/README/`make ingest`
+**已在 2026-09-12 补齐（工程 + 10y 回填）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`、生存者偏差、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、因果抽检、Shadow DB append-only、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**
 
 ## 9. MVP 之后的第一件事
 
