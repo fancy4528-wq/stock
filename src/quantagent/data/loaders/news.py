@@ -9,6 +9,7 @@ import polars as pl
 from sqlalchemy import Connection, create_engine, text
 from sqlalchemy.engine import Engine
 
+from quantagent.data.normalizers.news import symbol_from_em_announce_url
 from quantagent.data.validators import ValidationContext, Validator, persist_rule_results
 from quantagent.data.validators.report import ValidationReport
 from quantagent.shared.config import get_settings
@@ -142,22 +143,27 @@ class NewsLoader:
             """
             INSERT INTO news (
                 source, source_id, url, title, body, published_at,
-                lang, content_hash, raw_ref
+                lang, content_hash, raw_ref, related_symbol, announce_type
             ) VALUES (
                 :source, :source_id, :url, :title, :body, :published_at,
-                :lang, :content_hash, :raw_ref
+                :lang, :content_hash, :raw_ref, :related_symbol, :announce_type
             )
             ON CONFLICT (source, source_id) DO UPDATE SET
                 url = COALESCE(EXCLUDED.url, news.url),
                 title = EXCLUDED.title,
                 body = COALESCE(EXCLUDED.body, news.body),
                 published_at = EXCLUDED.published_at,
-                raw_ref = COALESCE(EXCLUDED.raw_ref, news.raw_ref)
+                raw_ref = COALESCE(EXCLUDED.raw_ref, news.raw_ref),
+                related_symbol = COALESCE(EXCLUDED.related_symbol, news.related_symbol),
+                announce_type = COALESCE(EXCLUDED.announce_type, news.announce_type)
             RETURNING news_id
             """
         )
         ids: list[int] = []
         for row in df.to_dicts():
+            related = row.get("related_symbol")
+            if related is None:
+                related = symbol_from_em_announce_url(row.get("url"))
             news_id = conn.execute(
                 stmt,
                 {
@@ -170,6 +176,8 @@ class NewsLoader:
                     "lang": str(row.get("lang") or "zh"),
                     "content_hash": str(row["content_hash"]),
                     "raw_ref": row.get("raw_ref"),
+                    "related_symbol": related,
+                    "announce_type": row.get("announce_type"),
                 },
             ).scalar_one()
             ids.append(int(news_id))

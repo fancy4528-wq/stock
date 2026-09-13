@@ -63,6 +63,19 @@ class QualityCheck(BaseModel):
     detail: str = ""
 
 
+class EventRow(BaseModel):
+    """One structured event shown in the daily report."""
+
+    event_id: int
+    news_id: int | None = None
+    event_type: str
+    summary: str
+    direction: str = "unclear"
+    impact: float | None = None
+    symbols: list[str] = Field(default_factory=list)
+    news_source: str | None = None
+
+
 class ReportBundle(BaseModel):
     """Structured facts for tools + markdown sections."""
 
@@ -76,6 +89,7 @@ class ReportBundle(BaseModel):
     factor_rank_name: str = "mom_20d"
     shadow: list[ShadowStatusRow] = Field(default_factory=list)
     risk_notes: list[RiskNote] = Field(default_factory=list)
+    events: list[EventRow] = Field(default_factory=list)
     quality: list[QualityCheck] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
     code_version: str = "dev"

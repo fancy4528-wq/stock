@@ -26,11 +26,19 @@ from quantagent.quant.evaluation.quantile import quantile_analysis
 from quantagent.quant.features.base import FactorInput
 from quantagent.quant.features.compute import compute_factors
 from quantagent.quant.features.registry import MVP_FACTOR_CODES
+from quantagent.reporting.events import load_events_for_as_of
 from quantagent.shared.errors import QuantAgentError
 
 
 class LiveReportError(QuantAgentError):
     """Live daily-report data path failure."""
+
+
+def _load_events_safe(*, as_of: date, symbols: list[str]) -> list[Any]:
+    try:
+        return load_events_for_as_of(as_of, universe_symbols=symbols, limit=12)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 @dataclass(frozen=True)
@@ -574,8 +582,10 @@ def load_live_report_data(
             f"基准：{index_symbol}",
             f"因子：compute_factors({', '.join(c for c in factor_codes if c != 'ep_ttm')})",
             "行业：PITRepository.get_industry（若已入库）",
+            "事件：event / event_security（visible_at 当日）",
         ],
         code_version=code_version,
+        events=_load_events_safe(as_of=as_of, symbols=symbols),
     )
     return LiveReportData(
         as_of=as_of,

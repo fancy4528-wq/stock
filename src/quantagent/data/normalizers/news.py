@@ -27,17 +27,31 @@ CANONICAL_NEWS_COLUMNS = [
     "lang",
     "content_hash",
     "raw_ref",
-    "related_symbol",  # optional; announcements only (not a news column)
+    "related_symbol",  # optional; stored on news for extract hints
     "announce_type",  # optional hint for rule extractor
 ]
 
 _EM_URL_ID = re.compile(r"/a/(\d+)\.html", re.IGNORECASE)
 _ANNOUNCE_ID = re.compile(r"/(AN\d+)\.html", re.IGNORECASE)
+_ANNOUNCE_URL_CODE = re.compile(
+    r"/notices/detail/(?P<code>\d{6})/",
+    re.IGNORECASE,
+)
 
 
 def content_hash(title: str, body: str | None) -> str:
     payload = f"{title.strip()}\n{(body or '').strip()}".encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def symbol_from_em_announce_url(url: str | None) -> str | None:
+    """Recover CN ticker from East Money notice detail URL when present."""
+    if not url:
+        return None
+    m = _ANNOUNCE_URL_CODE.search(str(url))
+    if not m:
+        return None
+    return _safe_symbol(m.group("code"))
 
 
 def _parse_cls_published(row: dict[str, object]) -> datetime:
@@ -217,9 +231,12 @@ class NewsNormalizer:
             day = date.fromisoformat(str(d_raw)[:10])
             published = datetime.combine(day, time(16, 0), tzinfo=CN_TZ)
             name = str(row.get("名称") or "").strip()
-            body = f"{announce_type or ''} {name} {title}".strip()
-            ch = content_hash(title, body)
             symbol = _safe_symbol(code)
+            # Keep ticker in body so regex extract still works if hint is dropped.
+            body = " ".join(
+                p for p in (symbol or "", announce_type or "", name, title) if p
+            ).strip()
+            ch = content_hash(title, body)
             rows.append(
                 {
                     "source": "em_announce",

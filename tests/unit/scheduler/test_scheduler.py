@@ -88,6 +88,23 @@ async def test_daily_live_pipeline_chains_refresh_then_report(tmp_path: Path) ->
             fake_refresh,
         ),
         patch(
+            "quantagent.scheduler.jobs.daily_pipeline.refresh_daily_news_events",
+            AsyncMock(
+                return_value=type(
+                    "N",
+                    (),
+                    {
+                        "as_of": date(2026, 9, 4),
+                        "news_rows": 5,
+                        "announcement_rows": 10,
+                        "events": 2,
+                        "event_links": 1,
+                        "degraded": [],
+                    },
+                )()
+            ),
+        ) as fake_news,
+        patch(
             "quantagent.scheduler.jobs.daily_pipeline.daily_report_job",
             fake_report,
         ),
@@ -103,6 +120,7 @@ async def test_daily_live_pipeline_chains_refresh_then_report(tmp_path: Path) ->
 
     assert path == report_path
     fake_refresh.assert_awaited_once()
+    fake_news.assert_awaited_once()
     fake_report.assert_awaited_once()
     kwargs = fake_report.await_args.kwargs
     assert kwargs["synthetic"] is False
@@ -167,6 +185,23 @@ async def test_daily_live_pipeline_retries_transient_then_succeeds(tmp_path: Pat
         patch(
             "quantagent.scheduler.jobs.daily_pipeline.refresh_daily_market_data",
             flaky_refresh,
+        ),
+        patch(
+            "quantagent.scheduler.jobs.daily_pipeline.refresh_daily_news_events",
+            AsyncMock(
+                return_value=type(
+                    "N",
+                    (),
+                    {
+                        "as_of": date(2026, 9, 4),
+                        "news_rows": 0,
+                        "announcement_rows": 0,
+                        "events": 0,
+                        "event_links": 0,
+                        "degraded": [],
+                    },
+                )()
+            ),
         ),
         patch(
             "quantagent.scheduler.jobs.daily_pipeline.daily_report_job",

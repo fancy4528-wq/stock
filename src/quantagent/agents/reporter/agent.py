@@ -97,6 +97,20 @@ def _build_evidence(bundle: ReportBundle) -> list[Evidence]:
                 as_of=bundle.as_of,
             )
         )
+    for i, ev in enumerate(bundle.events[:8]):
+        syms = ",".join(ev.symbols[:3]) if ev.symbols else "-"
+        evidence.append(
+            Evidence(
+                evidence_id=f"ev-event-{i}",
+                kind="news",
+                ref_id=f"event:{ev.event_id}",
+                excerpt=(
+                    f"type={ev.event_type} dir={ev.direction} "
+                    f"symbols={syms} {ev.summary[:120]}"
+                ),
+                as_of=bundle.as_of,
+            )
+        )
     return evidence
 
 
@@ -130,6 +144,15 @@ def build_deterministic_report(bundle: ReportBundle) -> DailyReport:
         factor_summary = f"数据显示因子当日多空收益：{bits}。"[:300]
     else:
         factor_summary = "数据显示当日无可用因子多空统计。"
+
+    if bundle.events:
+        types = sorted({e.event_type for e in bundle.events})
+        event_summary = (
+            f"数据显示当日结构化事件 {len(bundle.events)} 条"
+            f"（类型：{', '.join(types[:5])}）。"
+        )[:400]
+    else:
+        event_summary = "数据显示当日无入库结构化事件（或尚未抽取）。"
 
     observations: list[Observation] = []
     if abs(m.amount_vs_20d) >= 0.10:
@@ -172,6 +195,16 @@ def build_deterministic_report(bundle: ReportBundle) -> DailyReport:
                 evidence_refs=["ev-shadow-0"],
             )
         )
+    if bundle.events:
+        e0 = bundle.events[0]
+        observations.append(
+            Observation(
+                statement=f"事件 {e0.event_type}: {e0.summary[:80]}",
+                metric="event_count",
+                value=float(len(bundle.events)),
+                evidence_refs=["ev-event-0"],
+            )
+        )
 
     quality_fail = [q for q in bundle.quality if not q.ok]
     data_quality_note = None
@@ -185,6 +218,7 @@ def build_deterministic_report(bundle: ReportBundle) -> DailyReport:
         market_summary=market_summary,
         sector_summary=sector_summary,
         factor_summary=factor_summary,
+        event_summary=event_summary,
         notable_observations=observations[:5],
         data_quality_note=data_quality_note,
         evidence=evidence,

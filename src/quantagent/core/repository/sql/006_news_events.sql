@@ -12,6 +12,8 @@ CREATE TABLE news (
     lang          CHAR(2)     NOT NULL DEFAULT 'zh',
     content_hash  TEXT        NOT NULL,
     raw_ref       TEXT,
+    related_symbol TEXT,                  -- optional CN ticker hint (announcements)
+    announce_type  TEXT,                  -- optional EM type label
     UNIQUE (source, source_id)
 );
 

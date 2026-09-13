@@ -36,7 +36,25 @@ def test_rule_extractor_contract_and_symbol() -> None:
     assert out.direction in {"positive", "neutral", "unclear"}
 
 
+def test_rule_extractor_hint_symbol_without_ticker_in_text() -> None:
+    ext = RuleNewsExtractor()
+    out = ext.extract(
+        title="贵州茅台:重大合同公告",
+        body="重大合同 贵州茅台 贵州茅台:重大合同公告",
+        announce_type="重大合同",
+        hint_symbol="600519",
+    )
+    assert out.event_type == "contract"
+    assert out.primary_symbols[0] == "600519.SH"
+
+
 def test_figures_gold_soft_rate() -> None:
     score = score_figures_gold(GOLD)
-    assert score.n >= 25
+    assert score.n >= 100
     assert score.soft_rate >= 0.8
+
+
+def test_extract_figures_total_output() -> None:
+    figs = extract_figures("前8月安徽省船舶工业实现总产值213亿元 同比增长33%")
+    assert any(f.label == "总产值" and f.value == 213.0 and f.unit == "亿元" for f in figs)
+    assert any(f.label == "同比" and f.value == 33.0 for f in figs)

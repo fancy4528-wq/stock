@@ -28,10 +28,11 @@ def build_scheduler(
     lookback_sessions: int | None = None,
     skip_ingest: bool = False,
     skip_seed: bool = False,
+    skip_news: bool = False,
 ) -> AsyncIOScheduler:
     """Build scheduler that fires every calendar day, then skips non-sessions.
 
-    Live mode (default): ingest → seed → report --live.
+    Live mode (default): ingest → news → seed → report --live.
     Synthetic mode: report-only demo (no network / DB refresh).
     """
     cfg = load_scheduler_config(market)
@@ -79,6 +80,7 @@ def build_scheduler(
             lookback_sessions=lookback,
             skip_ingest=skip_ingest,
             skip_seed=skip_seed,
+            skip_news=skip_news,
         )
 
     sched.add_job(
@@ -107,6 +109,7 @@ async def run_once(
     lookback_sessions: int | None = None,
     skip_ingest: bool = False,
     skip_seed: bool = False,
+    skip_news: bool = False,
 ) -> Path:
     """Run one pipeline iteration (does not apply trading-day skip)."""
     cfg = load_scheduler_config(market)
@@ -136,6 +139,7 @@ async def run_once(
         lookback_sessions=lookback,
         skip_ingest=skip_ingest,
         skip_seed=skip_seed,
+        skip_news=skip_news,
     )
 
 
@@ -158,7 +162,7 @@ def run_scheduler_blocking(**kwargs: Any) -> None:
             f"scheduler started ({mode}): cn_daily_live cron daily "
             f"{hh:02d}:{mm:02d} {cfg.timezone} "
             f"(skips non-trading days via trading_calendar; "
-            f"live chain=ingest→seed→report)",
+            f"live chain=ingest→news→seed→report)",
             flush=True,
         )
         try:
