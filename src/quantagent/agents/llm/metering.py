@@ -15,8 +15,15 @@ class CostRecord(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cost_usd: float = 0.0
-    mode: str = "deterministic"  # deterministic | llm
+    mode: str = "deterministic"  # deterministic | llm | budget_skip | budget_degrade
+    allocation: str = "daily_research"
     at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+_COST_LOG_HEADER = (
+    "| UTC | run_id | agent | allocation | model | mode | prompt | completion | USD |"
+)
+_COST_LOG_SEP = "|---|---|---|---|---|---|---:|---:|---:|"
 
 
 class CostTracker:
@@ -24,6 +31,7 @@ class CostTracker:
 
     def __init__(self) -> None:
         self.records: list[CostRecord] = []
+        self._flushed = 0
 
     def add(self, record: CostRecord) -> None:
         self.records.append(record)
@@ -32,7 +40,13 @@ class CostTracker:
     def total_usd(self) -> float:
         return sum(r.cost_usd for r in self.records)
 
+    def total_usd_for(self, allocation: str) -> float:
+        return sum(r.cost_usd for r in self.records if r.allocation == allocation)
+
     def append_cost_log(self, path: Path | str) -> None:
+        pending = self.records[self._flushed :]
+        if not pending:
+            return
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         lines: list[str] = []
@@ -41,16 +55,30 @@ class CostTracker:
                 [
                     "# LLM cost log",
                     "",
-                    "Append-only notes from ReporterAgent / later Agents.",
+                    "Append-only notes from ReporterAgent / later Agents "
+                    "(allocation = ADR-0010 budget pool).",
                     "",
-                    "| UTC | run_id | agent | model | mode | prompt | completion | USD |",
-                    "|---|---|---|---|---|---:|---:|---:|",
+                    _COST_LOG_HEADER,
+                    _COST_LOG_SEP,
                 ]
             )
-        for r in self.records:
+        else:
+            existing = out.read_text(encoding="utf-8")
+            if "| allocation |" not in existing:
+                lines.extend(
+                    [
+                        "",
+                        "<!-- schema v2: allocation column -->",
+                        _COST_LOG_HEADER,
+                        _COST_LOG_SEP,
+                    ]
+                )
+        for r in pending:
             lines.append(
-                f"| {r.at.isoformat()} | {r.run_id} | {r.agent} | {r.model} | "
-                f"{r.mode} | {r.prompt_tokens} | {r.completion_tokens} | {r.cost_usd:.4f} |"
+                f"| {r.at.isoformat()} | {r.run_id} | {r.agent} | {r.allocation} | "
+                f"{r.model} | {r.mode} | {r.prompt_tokens} | {r.completion_tokens} | "
+                f"{r.cost_usd:.4f} |"
             )
         with out.open("a", encoding="utf-8") as fh:
             fh.write("\n".join(lines) + "\n")
+        self._flushed = len(self.records)

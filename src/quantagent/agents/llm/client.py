@@ -1,10 +1,10 @@
-"""Minimal LLM client. MVP uses NullLLMClient (deterministic Reporter)."""
+"""LLM client protocol + Null / Echo doubles (HTTP lives in http_client)."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class LLMResponse(BaseModel):
@@ -18,7 +18,14 @@ class LLMResponse(BaseModel):
 class LLMClient(Protocol):
     model: str
 
-    async def complete(self, *, system: str, user: str) -> LLMResponse: ...
+    async def complete(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens_out: int | None = None,
+        tier: str | None = None,
+    ) -> LLMResponse: ...
 
 
 class NullLLMClient:
@@ -26,8 +33,15 @@ class NullLLMClient:
 
     model = "null"
 
-    async def complete(self, *, system: str, user: str) -> LLMResponse:
-        _ = (system, user)
+    async def complete(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens_out: int | None = None,
+        tier: str | None = None,
+    ) -> LLMResponse:
+        _ = (system, user, max_tokens_out, tier)
         return LLMResponse(text="", model=self.model, cost_usd=0.0)
 
 
@@ -38,9 +52,15 @@ class EchoLLMClient:
         self.model = model
         self._text = text
 
-    async def complete(self, *, system: str, user: str) -> LLMResponse:
-        _ = (system, user)
-        # Rough token estimate for metering demos
+    async def complete(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens_out: int | None = None,
+        tier: str | None = None,
+    ) -> LLMResponse:
+        _ = (max_tokens_out, tier)
         n = max(1, (len(system) + len(user)) // 4)
         return LLMResponse(
             text=self._text,
@@ -49,10 +69,3 @@ class EchoLLMClient:
             completion_tokens=max(1, len(self._text) // 4),
             cost_usd=0.001,
         )
-
-
-class TokenBudget(BaseModel):
-    remaining_usd: float = Field(default=1.0, ge=0.0)
-
-    def charge(self, usd: float) -> None:
-        self.remaining_usd = max(0.0, self.remaining_usd - usd)

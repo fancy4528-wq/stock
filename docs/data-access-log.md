@@ -36,4 +36,5 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-13 | daily report | 新增「二、重要事件」；已重写 09-02～11 交易日日报 | `load_events_for_as_of` + `make rereport-with-events` |
 | 2026-09-13 | news.related_symbol | 公告代码未落库 → 事件标的全空 | migration `0006` + extract hint；URL 回填 `make relink-event-symbols` |
 | 2026-09-13 | security_industry | 重跑日报时申万归属表为空 | `make ingest-industry` 后 `rereport-with-events` |
+| 2026-09-13 | LLMClient / TokenBudget | P2 基建：OpenAI-compatible HTTP + ADR-0010 调用前预留；cost-log 增加 allocation | `config/llm.yaml`；`LLM_API_KEY` 空则 Null/$0；`make` 日报写 `docs/cost-log.md` |
 

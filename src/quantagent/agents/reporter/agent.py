@@ -6,6 +6,8 @@ import json
 from typing import Any
 
 from quantagent.agents.base import AgentContext, Evidence
+from quantagent.agents.llm.budget import DegradationNote, TokenBudget
+from quantagent.agents.llm.call import complete_with_budget
 from quantagent.agents.llm.client import LLMClient, NullLLMClient
 from quantagent.agents.llm.metering import CostRecord, CostTracker
 from quantagent.agents.reporter.prompts import load_common_constraints, load_prompt
@@ -19,7 +21,13 @@ from quantagent.agents.tools.market import (
     get_shadow_status,
 )
 from quantagent.agents.validation import require_evidence, validate_model
-from quantagent.shared.errors import EvidenceMissingError, SchemaValidationError
+from quantagent.shared.errors import (
+    BudgetDegrade,
+    BudgetExceeded,
+    BudgetSkip,
+    EvidenceMissingError,
+    SchemaValidationError,
+)
 
 
 def _pct(x: float) -> str:
@@ -105,8 +113,7 @@ def _build_evidence(bundle: ReportBundle) -> list[Evidence]:
                 kind="news",
                 ref_id=f"event:{ev.event_id}",
                 excerpt=(
-                    f"type={ev.event_type} dir={ev.direction} "
-                    f"symbols={syms} {ev.summary[:120]}"
+                    f"type={ev.event_type} dir={ev.direction} symbols={syms} {ev.summary[:120]}"
                 ),
                 as_of=bundle.as_of,
             )
@@ -148,8 +155,7 @@ def build_deterministic_report(bundle: ReportBundle) -> DailyReport:
     if bundle.events:
         types = sorted({e.event_type for e in bundle.events})
         event_summary = (
-            f"数据显示当日结构化事件 {len(bundle.events)} 条"
-            f"（类型：{', '.join(types[:5])}）。"
+            f"数据显示当日结构化事件 {len(bundle.events)} 条（类型：{', '.join(types[:5])}）。"
         )[:400]
     else:
         event_summary = "数据显示当日无入库结构化事件（或尚未抽取）。"
@@ -253,10 +259,15 @@ class ReporterAgent:
         *,
         cost_tracker: CostTracker | None = None,
         validation_tracker: ValidationTracker | None = None,
+        budget: TokenBudget | None = None,
+        allocation: str = "daily_research",
     ) -> None:
         self._llm: LLMClient = llm or NullLLMClient()
         self._costs = cost_tracker or CostTracker()
         self._validations = validation_tracker or ValidationTracker()
+        self._budget = budget
+        self._allocation = allocation
+        self.degradations: list[DegradationNote] = []
 
     def _record_validation(
         self,
@@ -280,24 +291,49 @@ class ReporterAgent:
             )
         )
 
+    def _add_cost(
+        self,
+        *,
+        run_id: str,
+        model: str,
+        mode: str,
+        cost_usd: float = 0.0,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+    ) -> None:
+        self._costs.add(
+            CostRecord(
+                run_id=run_id,
+                agent=self.name,
+                model=model,
+                mode=mode,
+                allocation=self._allocation,
+                cost_usd=cost_usd,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+        )
+
+    async def _deterministic(
+        self,
+        ctx: AgentContext,
+        bundle: ReportBundle,
+        *,
+        mode: str = "deterministic",
+        model: str = "deterministic",
+    ) -> DailyReport:
+        try:
+            report = build_deterministic_report(bundle)
+        except (SchemaValidationError, EvidenceMissingError, ValueError) as exc:
+            self._record_validation(ctx=ctx, mode="deterministic", ok=False, error=exc)
+            raise
+        self._record_validation(ctx=ctx, mode="deterministic", ok=True)
+        self._add_cost(run_id=ctx.run_id, model=model, mode=mode, cost_usd=0.0)
+        return report
+
     async def run(self, ctx: AgentContext, bundle: ReportBundle) -> DailyReport:
         if isinstance(self._llm, NullLLMClient) or self._llm.model == "null":
-            try:
-                report = build_deterministic_report(bundle)
-            except (SchemaValidationError, EvidenceMissingError, ValueError) as exc:
-                self._record_validation(ctx=ctx, mode="deterministic", ok=False, error=exc)
-                raise
-            self._record_validation(ctx=ctx, mode="deterministic", ok=True)
-            self._costs.add(
-                CostRecord(
-                    run_id=ctx.run_id,
-                    agent=self.name,
-                    model="deterministic",
-                    mode="deterministic",
-                    cost_usd=0.0,
-                )
-            )
-            return report
+            return await self._deterministic(ctx, bundle)
 
         system = load_common_constraints() + "\n\n" + load_prompt("reporter")
         payload = {
@@ -311,26 +347,61 @@ class ReporterAgent:
         user = "根据以下结构化数据生成 DailyReport JSON（仅事实，无买卖建议）：\n" + json.dumps(
             payload, ensure_ascii=False
         )
-        resp = await self._llm.complete(system=system, user=user)
-        self._costs.add(
-            CostRecord(
-                run_id=ctx.run_id,
-                agent=self.name,
-                model=resp.model,
-                prompt_tokens=resp.prompt_tokens,
-                completion_tokens=resp.completion_tokens,
-                cost_usd=resp.cost_usd,
-                mode="llm",
+        tier = self.tier
+        budget = self._budget or TokenBudget()
+
+        try:
+            resp, _res = await complete_with_budget(
+                self._llm,
+                budget,
+                allocation=self._allocation,
+                tier=tier,
+                system=system,
+                user=user,
             )
+        except BudgetDegrade as exc:
+            self.degradations.extend(budget.degradations[-1:])
+            # Retry once on small tier; if still blocked, deterministic.
+            try:
+                resp, _res = await complete_with_budget(
+                    self._llm,
+                    budget,
+                    allocation=self._allocation,
+                    tier=exc.suggested_tier,
+                    system=system,
+                    user=user,
+                )
+            except (BudgetDegrade, BudgetSkip, BudgetExceeded):
+                note = DegradationNote(
+                    allocation=self._allocation,
+                    action="degrade",
+                    reason=str(exc),
+                    impact="日报改为确定性摘要（未调用 LLM）",
+                )
+                self.degradations.append(note)
+                return await self._deterministic(
+                    ctx, bundle, mode="budget_degrade", model="deterministic"
+                )
+        except (BudgetSkip, BudgetExceeded) as exc:
+            note = DegradationNote(
+                allocation=self._allocation,
+                action=getattr(exc, "action", "abort"),
+                reason=str(exc),
+                impact="日报改为确定性摘要（预算拦截，未产生 LLM 费用）",
+            )
+            self.degradations.append(note)
+            return await self._deterministic(ctx, bundle, mode="budget_skip", model="deterministic")
+
+        self._add_cost(
+            run_id=ctx.run_id,
+            model=resp.model,
+            mode="llm",
+            cost_usd=resp.cost_usd,
+            prompt_tokens=resp.prompt_tokens,
+            completion_tokens=resp.completion_tokens,
         )
         if not resp.text.strip():
-            try:
-                report = build_deterministic_report(bundle)
-            except (SchemaValidationError, EvidenceMissingError, ValueError) as exc:
-                self._record_validation(ctx=ctx, mode="deterministic", ok=False, error=exc)
-                raise
-            self._record_validation(ctx=ctx, mode="deterministic", ok=True)
-            return report
+            return await self._deterministic(ctx, bundle)
         try:
             report = _parse_llm_daily_report(resp.text, bundle)
         except (

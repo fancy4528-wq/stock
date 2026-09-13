@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from quantagent.agents.base import AgentContext
-from quantagent.agents.llm.client import NullLLMClient
+from quantagent.agents.llm.factory import build_llm_client, build_token_budget
 from quantagent.agents.llm.metering import CostTracker
 from quantagent.agents.reporter import ReporterAgent
 from quantagent.agents.reporter.validation_log import ValidationTracker
@@ -190,13 +190,20 @@ async def run_daily_pipeline(
     run_id: str | None = None,
     degraded: list[str] | None = None,
 ) -> Path:
-    """Shadow step -> ReporterAgent -> markdown (synthetic or live PIT)."""
+    """Shadow step -> ReporterAgent -> markdown (synthetic or live PIT).
+
+    LLM: ``build_llm_client()`` uses NullLLMClient unless ``LLM_API_KEY`` is set.
+    Budget: ADR-0010 ``daily_research`` pool via ``TokenBudget`` (pre-call reserve).
+    """
     costs = CostTracker()
     validations = ValidationTracker()
+    budget = build_token_budget(day=as_of)
     agent = ReporterAgent(
-        llm=NullLLMClient(),
+        llm=build_llm_client(),
         cost_tracker=costs,
         validation_tracker=validations,
+        budget=budget,
+        allocation="daily_research",
     )
 
     if synthetic:
@@ -276,6 +283,12 @@ async def run_daily_pipeline(
         ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
 
     report = await agent.run(ctx, bundle)
+    if agent.degradations:
+        extra = [
+            RiskNote(text=f"预算降级[{d.allocation}/{d.action}]: {d.impact}")
+            for d in agent.degradations
+        ]
+        bundle = bundle.model_copy(update={"risk_notes": list(bundle.risk_notes) + extra})
     out = Path(out_dir) / f"{as_of.isoformat()}.md"
     write_daily_report(report, bundle, out)
     if write_cost_log:

@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # NOTE: env name must NOT end with `_PROXY` — urllib treats `*_PROXY` as a proxy URL.
     collector_bypass_proxy: bool = Field(default=True, alias="COLLECTOR_DISABLE_SYSTEM_PROXY")
 
+    # Optional LLM (P2+). Empty key → NullLLMClient (deterministic Reporter).
+    llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
+    llm_base_url: str | None = Field(default=None, alias="LLM_BASE_URL")
+    llm_default_tier: str = Field(default="medium", alias="LLM_DEFAULT_TIER")
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def database_url(self) -> str:
