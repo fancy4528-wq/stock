@@ -198,6 +198,101 @@ def _load_calendar(df: object, *, source: str, raw_path: Path | None, target_dat
     )
 
 
+def _load_news(df: object, *, source: str, raw_path: Path | None, target_date: date) -> None:
+    import polars as pl
+
+    from quantagent.data.loaders import NewsLoader
+
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
+    result = NewsLoader().load(
+        df,
+        source=source,
+        raw_path=raw_path,
+        target_date=target_date,
+    )
+    print(
+        f"loaded news batch_id={result['batch_id']} rows={result['rows_loaded']} "
+        f"status={result['status']}"
+    )
+
+
+async def _ingest_news(
+    *,
+    feed: str,
+    target_date: date,
+    archive_root: Path | None,
+    load: bool,
+) -> None:
+    from quantagent.data.collectors.news import (
+        ClsNewsCollector,
+        EmAnnouncementCollector,
+        EmNewsCollector,
+    )
+    from quantagent.data.normalizers.news import NewsNormalizer
+
+    if feed == "cls":
+        collector = ClsNewsCollector(archive_root=archive_root)
+    elif feed == "em":
+        collector = EmNewsCollector(archive_root=archive_root)
+    elif feed == "em_announce":
+        collector = EmAnnouncementCollector(archive_root=archive_root)
+    else:
+        raise SystemExit(f"unsupported news feed={feed!r}")
+
+    batch = await collector.collect(target_date)
+    df = NewsNormalizer().normalize(batch)
+    print(
+        f"collected source={batch.source} dataset={batch.dataset} batch_id={batch.batch_id} "
+        f"rows_raw={batch.row_count} rows_norm={df.height} path={batch.raw_path}"
+    )
+    if df.height:
+        cols = [c for c in ("source", "title", "published_at", "related_symbol") if c in df.columns]
+        print(df.select(cols).head(5))
+    if load and df.height:
+        _load_news(df, source=batch.source, raw_path=batch.raw_path, target_date=target_date)
+
+
+def _run_extract_news(*, limit: int, load: bool) -> int:
+    from quantagent.agents.news_extractor import (
+        EXTRACTOR_MODEL,
+        EXTRACTOR_VERSION,
+        RuleNewsExtractor,
+    )
+    from quantagent.data.loaders import EventLoader
+
+    loader = EventLoader()
+    rows = loader.fetch_unextracted_news(limit=limit)
+    if not rows:
+        print("extract-news: no unextracted news rows")
+        return 0
+
+    extractor = RuleNewsExtractor()
+    items = []
+    for row in rows:
+        extraction = extractor.extract(
+            title=str(row["title"]),
+            body=row.get("body"),
+        )
+        items.append((int(row["news_id"]), row["published_at"], extraction))
+        print(
+            f"  news_id={row['news_id']} type={extraction.event_type} "
+            f"relevant={extraction.is_relevant} figs={len(extraction.figures)} "
+            f"symbols={extraction.primary_symbols[:3]}"
+        )
+
+    if load:
+        stats = loader.load_extractions(
+            items,
+            extractor_model=EXTRACTOR_MODEL,
+            extractor_version=EXTRACTOR_VERSION,
+        )
+        print(f"extract-news loaded events={stats['events']} links={stats['links']}")
+    else:
+        print(f"extract-news dry-run n={len(items)} (pass --load to persist)")
+    return 0
+
+
 async def _ingest_calendar(
     *,
     start: date | None,
@@ -436,6 +531,18 @@ def _replay_normalize(raw_path: Path, *, load: bool, dataset: str) -> None:
         if load and df.height:
             source = str(df["source"][0]) if "source" in df.columns else "archive"
             _load_calendar(df, source=source, raw_path=raw_path, target_date=date.today())
+        return
+
+    if dataset in {"news", "announcement"}:
+        from quantagent.data.normalizers.news import NewsNormalizer
+
+        df = NewsNormalizer().normalize_from_archive(raw_path)
+        print(f"replayed news normalize path={raw_path} rows={df.height}")
+        if df.height:
+            print(df.head(5))
+        if load and df.height:
+            source = str(df["source"][0]) if "source" in df.columns else "archive"
+            _load_news(df, source=source, raw_path=raw_path, target_date=date.today())
         return
 
     from quantagent.data.normalizers.price import PriceNormalizer
@@ -739,15 +846,23 @@ def main(argv: list[str] | None = None) -> int:
             "index",
             "security_industry",
             "trading_calendar",
+            "news",
+            "announcement",
         ),
         default="price_daily",
         help="Dataset to ingest (default: price_daily)",
     )
     ingest.add_argument(
         "--source",
-        choices=("akshare", "baostock"),
+        choices=("akshare", "baostock", "cls", "em", "em_announce"),
         default="akshare",
         help="Primary collector (default: akshare)",
+    )
+    ingest.add_argument(
+        "--news-feed",
+        choices=("cls", "em", "em_announce"),
+        default=None,
+        help="News/announcement feed (overrides --source for dataset=news|announcement)",
     )
     ingest.add_argument("--archive-root", type=Path, default=None)
     ingest.add_argument(
@@ -951,6 +1066,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     surv.add_argument("--universe", default="mvp_cn_50")
 
+    extract_news = sub.add_parser(
+        "extract-news",
+        help="Rule_v1 NewsExtractor on unextracted news → event / event_security",
+    )
+    extract_news.add_argument("--limit", type=int, default=100)
+    extract_news.add_argument(
+        "--load",
+        action="store_true",
+        help="Persist extractions into event / event_security",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -1005,6 +1131,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ensure-survivorship":
         return _run_ensure_survivorship(code=args.universe)
+
+    if args.command == "extract-news":
+        return _run_extract_news(limit=int(args.limit), load=bool(args.load))
 
     if args.command == "report":
         synthetic = not bool(args.live)
@@ -1090,6 +1219,30 @@ def main(argv: list[str] | None = None) -> int:
                 _ingest_industry(
                     symbols=symbols or None,
                     end=end,
+                    archive_root=args.archive_root,
+                    load=args.load,
+                )
+            )
+            return 0
+
+        if args.dataset in {"news", "announcement"}:
+            feed = args.news_feed or args.source
+            if args.dataset == "announcement":
+                feed = args.news_feed or "em_announce"
+            if feed not in {"cls", "em", "em_announce"}:
+                print(
+                    "news/announcement requires --news-feed cls|em|em_announce "
+                    "(or --source with those values)",
+                    file=sys.stderr,
+                )
+                return 2
+            end = args.end or date.today()
+            if args.daily:
+                end = date.today()
+            asyncio.run(
+                _ingest_news(
+                    feed=feed,
+                    target_date=end,
                     archive_root=args.archive_root,
                     load=args.load,
                 )

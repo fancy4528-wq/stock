@@ -3,6 +3,7 @@
 from quantagent.data.normalizers.calendar import CalendarNormalizer
 from quantagent.data.normalizers.financial import FinancialNormalizer
 from quantagent.data.normalizers.industry import IndustryNormalizer
+from quantagent.data.normalizers.news import NewsNormalizer
 from quantagent.data.normalizers.price import PriceNormalizer
 from quantagent.data.normalizers.symbol import normalize_symbol, to_baostock_code, to_raw_digits
 
@@ -10,6 +11,7 @@ __all__ = [
     "CalendarNormalizer",
     "FinancialNormalizer",
     "IndustryNormalizer",
+    "NewsNormalizer",
     "PriceNormalizer",
     "normalize_symbol",
     "to_baostock_code",

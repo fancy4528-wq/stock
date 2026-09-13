@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -51,6 +51,19 @@ ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 
 
 ingest-calendar: ## A 股交易日历入库（akshare 主源；加 --dual-check 对比 baostock；end 默认 today+1y）
 	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01 --end $(TODAY_PLUS_1Y)
+
+ingest-news: ## P2：财联社+东财快讯采集并入库
+	uv run python -m quantagent.cli ingest --dataset news --news-feed cls --load --daily
+	uv run python -m quantagent.cli ingest --dataset news --news-feed em --load --daily
+
+ingest-announcements: ## P2：东财公告列表（按日）采集并入库
+	uv run python -m quantagent.cli ingest --dataset announcement --news-feed em_announce --load --end $(TODAY)
+
+extract-news: ## P2：rule_v1 抽取未处理新闻 → event / event_security
+	uv run python -m quantagent.cli extract-news --limit 200 --load
+
+extraction-eval: ## P2：数字提取金标基线 → docs/extraction-eval.md
+	uv run python scripts/extraction_eval.py --gold tests/fixtures/extraction/figures_gold.jsonl
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN

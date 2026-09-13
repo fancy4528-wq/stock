@@ -1,0 +1,41 @@
+# Map East Money / CN announcement type labels → EventExtraction.event_type
+# Unknown labels fall through to "other".
+
+mappings:
+  业绩预告: earnings
+  业绩快报: earnings
+  定期报告: earnings
+  年报: earnings
+  半年报: earnings
+  一季报: earnings
+  三季报: earnings
+  盈利预测: guidance
+  业绩说明会: guidance
+  重大合同: contract
+  日常经营: contract
+  中标: contract
+  股权激励: shareholding
+  权益变动: shareholding
+  增持: shareholding
+  减持: shareholding
+  回购: shareholding
+  股权转让: shareholding
+  关联交易: shareholding
+  并购重组: mna
+  吸收合并: mna
+  资产重组: mna
+  董事会: management
+  监事会: management
+  股东大会: management
+  人事变动: management
+  高管变动: management
+  诉讼仲裁: litigation
+  处罚: litigation
+  监管措施: regulation
+  问询函: regulation
+  关注函: regulation
+  风险提示: regulation
+  停牌: other
+  复牌: other
+  调研活动: other
+  其他: other
