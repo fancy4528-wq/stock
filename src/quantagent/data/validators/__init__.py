@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 from quantagent.data.validators.calendar import CALENDAR_RULES
 from quantagent.data.validators.financial import FINANCIAL_STATEMENT_RULES
 from quantagent.data.validators.industry import INDUSTRY_RULES
+from quantagent.data.validators.news import NEWS_RULES
 from quantagent.data.validators.price import PRICE_DAILY_RULES
 from quantagent.data.validators.report import RuleResult, ValidationReport
 from quantagent.shared.alerts import notify_data_quality_fatal
@@ -69,6 +70,8 @@ class Validator:
             rules = INDUSTRY_RULES
         elif dataset == "trading_calendar":
             rules = CALENDAR_RULES
+        elif dataset in {"news", "announcement"}:
+            rules = NEWS_RULES
         else:
             raise DataQualityError(f"No validator registered for dataset={dataset!r}")
 

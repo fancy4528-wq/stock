@@ -26,3 +26,7 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-12 | akshare.stock_zh_index_daily | 沪深300 同窗 2843 行入库 | `ingest --dataset index --symbols 000300.SH --start 2015-01-01 --end 2026-09-12 --load` |
 | 2026-09-12 | baostock.query_adjust_factor | 50 只复权因子 711 行（除权日稀疏） | `scripts/backfill_adjust_10y.py` |
 | 2026-09-12 | seed + industry | `mvp_cn_50` snapshot n=50 missing=0；行业 50/50 | `seed-universe` + industry ingest |
+| 2026-09-13 | akshare.stock_info_global_cls / stock_info_global_em | P2 快讯：列 标题/内容|摘要/发布日期|时间/链接；CLS 约 20 条滚动窗 | `make ingest-news` → `news` 表；source=`cls`/`em` |
+| 2026-09-13 | akshare.stock_notice_report | P2 公告：代码/名称/公告标题/类型/日期/网址；按日 `YYYYMMDD` | `make ingest-announcements` → source=`em_announce` |
+| 2026-09-13 | eastmoney np-anotice-stock | 周日 `total_hits=0` 时 akshare 抛 `KeyError: 代码` | 自研 `fetch_em_notice_report` + 向前回退最多 7 天 |
+| 2026-09-13 | rule_v1 NewsExtractor | 事件表 `event`/`event_security`；数字金标 30 条 soft=100% | `make extract-news` / `make extraction-eval` |
