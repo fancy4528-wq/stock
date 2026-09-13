@@ -15,6 +15,7 @@ from tenacity import (
 
 from quantagent.core.calendar import TradingCalendar
 from quantagent.data.ops import refresh_daily_market_data
+from quantagent.data.ops.news_refresh import refresh_daily_news_events
 from quantagent.data.validators.pit import run_pit_checks
 from quantagent.scheduler.jobs.daily_report import daily_report_job
 from quantagent.shared.alerts import notify_data_quality_fatal, notify_pipeline_fatal
@@ -66,6 +67,7 @@ async def _pipeline_once(
     lookback_sessions: int,
     skip_ingest: bool,
     skip_seed: bool,
+    skip_news: bool,
 ) -> Path:
     refresh = await refresh_daily_market_data(
         as_of=as_of,
@@ -86,9 +88,22 @@ async def _pipeline_once(
         for note in refresh.degraded:
             print(f"daily_live_pipeline DEGRADED: {note}")
 
+    news_degraded: list[str] = []
+    if not skip_ingest and not skip_news:
+        news = await refresh_daily_news_events(as_of=refresh.as_of)
+        print(
+            f"daily_live_pipeline news as_of={news.as_of} "
+            f"flash_rows={news.news_rows} announce_rows={news.announcement_rows} "
+            f"events={news.events} links={news.event_links}"
+        )
+        news_degraded = list(news.degraded)
+        for note in news_degraded:
+            print(f"daily_live_pipeline DEGRADED: {note}")
+
     if not skip_ingest:
         _run_pit_checks(check_date=refresh.as_of, run_id=refresh.run_id, market=market)
 
+    degraded = list(refresh.degraded or []) + news_degraded
     path = await daily_report_job(
         out_dir=out_dir,
         shadow_dir=shadow_dir,
@@ -97,7 +112,7 @@ async def _pipeline_once(
         universe_code=universe_code,
         market=market,
         run_id=refresh.run_id,
-        degraded=refresh.degraded or None,
+        degraded=degraded or None,
     )
     print(f"daily_live_pipeline wrote {path}")
     return path
@@ -114,11 +129,13 @@ async def daily_live_pipeline_job(
     lookback_sessions: int = 3,
     skip_ingest: bool = False,
     skip_seed: bool = False,
+    skip_news: bool = False,
 ) -> Path:
     """Run Gate-1 live daily chain and return the report path.
 
     Transient network/IO errors retry up to 3 times. DataQualityError is not
     retried. Any final failure is written to ``data/alerts/fatal.log``.
+    News/announcement ingest is soft-failed into degraded notes.
     """
     try:
         return await _pipeline_once(
@@ -131,6 +148,7 @@ async def daily_live_pipeline_job(
             lookback_sessions=lookback_sessions,
             skip_ingest=skip_ingest,
             skip_seed=skip_seed,
+            skip_news=skip_news,
         )
     except DataQualityError:
         raise

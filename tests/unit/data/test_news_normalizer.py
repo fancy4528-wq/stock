@@ -84,4 +84,14 @@ def test_normalize_announcement(tmp_path: Path) -> None:
     assert df["source_id"][0] == "AN202609121829285737"
     assert df["related_symbol"][0] == "600519.SH"
     assert df["announce_type"][0] == "重大合同"
+    assert "600519.SH" in str(df["body"][0])
     assert df["published_at"][0].hour == 16
+
+
+def test_symbol_from_em_announce_url() -> None:
+    from quantagent.data.normalizers.news import symbol_from_em_announce_url
+
+    url = "https://data.eastmoney.com/notices/detail/002375/AN202609041234.html"
+    assert symbol_from_em_announce_url(url) == "002375.SZ"
+    assert symbol_from_em_announce_url(None) is None
+    assert symbol_from_em_announce_url("https://example.com/x") is None

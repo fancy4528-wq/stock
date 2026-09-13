@@ -25,6 +25,11 @@ class DailyReport(BaseModel):
     market_summary: str = Field(max_length=400, description="Facts only, no judgement")
     sector_summary: str = Field(max_length=400)
     factor_summary: str = Field(max_length=300)
+    event_summary: str | None = Field(
+        default=None,
+        max_length=400,
+        description="Factual event headline for the session (optional)",
+    )
     notable_observations: list[Observation] = Field(default_factory=list, max_length=5)
     data_quality_note: str | None = None
 

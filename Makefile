@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -62,8 +62,18 @@ ingest-announcements: ## P2：东财公告列表（按日）采集并入库
 extract-news: ## P2：rule_v1 抽取未处理新闻 → event / event_security
 	uv run python -m quantagent.cli extract-news --limit 200 --load
 
-extraction-eval: ## P2：数字提取金标基线 → docs/extraction-eval.md
-	uv run python scripts/extraction_eval.py --gold tests/fixtures/extraction/figures_gold.jsonl
+extraction-eval: ## P2：数字提取金标基线 → docs/extraction-eval.md（≥100 条）
+	uv run python scripts/build_figures_gold.py --target 100
+	uv run python scripts/extraction_eval.py --gold tests/fixtures/extraction/figures_gold.jsonl --min-n 100
+
+backfill-announcements: ## P2：按日回填东财公告并抽取（默认 2026-09-02～12）
+	uv run python -u scripts/backfill_announcements_and_rereport.py --start 2026-09-02 --end 2026-09-12
+
+relink-event-symbols: ## P2：从公告 URL 回填 related_symbol 并补 event_security 标的
+	uv run python -u scripts/backfill_announcements_and_rereport.py --skip-announce --skip-extract --relink
+
+rereport-with-events: ## P2：回填公告+抽取后，重写已有日报（含重要事件节）
+	uv run python -u scripts/backfill_announcements_and_rereport.py --start 2026-09-02 --end 2026-09-12 --skip-announce --skip-extract --relink --rereport
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN

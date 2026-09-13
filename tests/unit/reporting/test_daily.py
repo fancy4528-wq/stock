@@ -14,7 +14,9 @@ def test_render_contains_required_sections() -> None:
     report = build_deterministic_report(bundle)
     md = render_daily_report(report, bundle)
     assert "A股市场日报" in md
+    assert "## 二、重要事件" in md
     assert "Shadow Portfolio" in md
     assert "不构成投资建议" in md
     assert "买入建议" not in md
     assert report.run_id in md
+    assert report.event_summary is not None

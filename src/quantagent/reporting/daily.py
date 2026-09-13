@@ -44,13 +44,31 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
             f"{'' if m.turnover_pctile_20d is None else f'{m.turnover_pctile_20d:.0%}'} |"
         ),
         "",
-        "## 二、行业表现（池内标的按申万一级归类）",
+        "## 二、重要事件",
         "",
-        report.sector_summary,
+        report.event_summary or "数据显示当日无入库结构化事件（或尚未抽取）。",
         "",
-        "| 行业 | 标的数 | 平均涨幅 | 5日 | 20日 |",
-        "|---|---|---|---|---|",
+        "| 类型 | 方向 | 标的 | 摘要 |",
+        "|---|---|---|---|",
     ]
+    for ev in bundle.events[:10]:
+        syms = ", ".join(ev.symbols[:3]) if ev.symbols else "—"
+        summary = ev.summary.replace("|", "/")[:80]
+        lines.append(f"| {ev.event_type} | {ev.direction} | {syms} | {summary} |")
+    if not bundle.events:
+        lines.append("| — | — | — | — |")
+
+    lines.extend(
+        [
+            "",
+            "## 三、行业表现（池内标的按申万一级归类）",
+            "",
+            report.sector_summary,
+            "",
+            "| 行业 | 标的数 | 平均涨幅 | 5日 | 20日 |",
+            "|---|---|---|---|---|",
+        ]
+    )
     for s in bundle.sectors:
         lines.append(
             f"| {s.industry} | {s.n_names} | {_pct(s.ret_1d)} | "
@@ -62,7 +80,7 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
     lines.extend(
         [
             "",
-            "## 三、因子表现",
+            "## 四、因子表现",
             "",
             report.factor_summary,
             "",
@@ -79,7 +97,7 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
     lines.extend(
         [
             "",
-            f"## 四、单因子排序（{bundle.factor_rank_name}，Top 5）",
+            f"## 五、单因子排序（{bundle.factor_rank_name}，Top 5）",
             "",
             "| 排名 | 代码 | 名称 | 因子分位 | 20日涨幅 |",
             "|---|---|---|---|---|",
@@ -95,7 +113,7 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
     lines.extend(
         [
             "",
-            "## 五、Shadow Portfolio 状态",
+            "## 六、Shadow Portfolio 状态",
             "",
             "| 组合 | 今日 | 累计 | 最大回撤 | 持仓数 |",
             "|---|---|---|---|---|",
@@ -109,7 +127,7 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
     if not bundle.shadow:
         lines.append("| — | — | — | — | — |")
 
-    lines.extend(["", "## 六、风控提示", ""])
+    lines.extend(["", "## 七、风控提示", ""])
     if bundle.risk_notes:
         for n in bundle.risk_notes:
             lines.append(f"- {n.text}")
@@ -123,7 +141,7 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
     lines.extend(
         [
             "",
-            "## 七、数据质量",
+            "## 八、数据质量",
             "",
             "| 检查 | 结果 |",
             "|---|---|",
@@ -138,7 +156,7 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
     lines.extend(
         [
             "",
-            "## 八、附录：数据溯源",
+            "## 九、附录：数据溯源",
             "",
             "本报告数据来源：",
         ]

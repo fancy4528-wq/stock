@@ -273,6 +273,8 @@ def _run_extract_news(*, limit: int, load: bool) -> int:
         extraction = extractor.extract(
             title=str(row["title"]),
             body=row.get("body"),
+            announce_type=row.get("announce_type"),
+            hint_symbol=row.get("related_symbol"),
         )
         items.append((int(row["news_id"]), row["published_at"], extraction))
         print(
@@ -739,6 +741,7 @@ def _run_schedule(
     universe: str,
     skip_ingest: bool = False,
     skip_seed: bool = False,
+    skip_news: bool = False,
 ) -> int:
     if once:
         from quantagent.scheduler.app import run_once
@@ -752,6 +755,7 @@ def _run_schedule(
                 universe_code=universe,
                 skip_ingest=skip_ingest,
                 skip_seed=skip_seed,
+                skip_news=skip_news,
             )
         )
         print(f"schedule --once wrote {path}")
@@ -766,6 +770,7 @@ def _run_schedule(
         universe_code=universe,
         skip_ingest=skip_ingest,
         skip_seed=skip_seed,
+        skip_news=skip_news,
     )
     return 0
 
@@ -1012,6 +1017,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Live mode: skip universe_snapshot seed",
     )
+    sched.add_argument(
+        "--skip-news",
+        action="store_true",
+        help="Live mode: skip news/announcement ingest + event extract",
+    )
     sched_mode = sched.add_mutually_exclusive_group()
     sched_mode.add_argument(
         "--synthetic",
@@ -1021,7 +1031,7 @@ def main(argv: list[str] | None = None) -> int:
     sched_mode.add_argument(
         "--live",
         action="store_true",
-        help="Live chain (default): ingest→seed→report",
+        help="Live chain (default): ingest→news→seed→report",
     )
 
     ingest_daily = sub.add_parser(
@@ -1157,6 +1167,7 @@ def main(argv: list[str] | None = None) -> int:
             universe=args.universe,
             skip_ingest=bool(args.skip_ingest),
             skip_seed=bool(args.skip_seed),
+            skip_news=bool(getattr(args, "skip_news", False)),
         )
 
     if args.command == "ingest-daily":

@@ -1,30 +1,100 @@
-{"id": "f001", "text": "公司实现营收12.3亿元，同比增长15%", "figure": {"label": "营收", "value": 12.3, "unit": "亿元"}}
-{"id": "f002", "text": "净利润3.5亿元，同比下降8.2%", "figure": {"label": "净利润", "value": 3.5, "unit": "亿元"}}
-{"id": "f003", "text": "归母净利润同比增长25.6%", "figure": {"label": "同比", "value": 25.6, "unit": "%"}}
-{"id": "f004", "text": "中标金额1.2亿元的重大合同", "figure": {"label": "中标金额", "value": 1.2, "unit": "亿元"}}
-{"id": "f005", "text": "合同金额8500万元已确认", "figure": {"label": "合同金额", "value": 8500.0, "unit": "万元"}}
-{"id": "f006", "text": "营业收入同比增12%", "figure": {"label": "同比", "value": 12.0, "unit": "%"}}
-{"id": "f007", "text": "环比下降3.5%", "figure": {"label": "环比", "value": -3.5, "unit": "%"}}
-{"id": "f008", "text": "产能提升至50万吨", "figure": {"label": "产能", "value": 50.0, "unit": "万吨"}}
-{"id": "f009", "text": "投资额约28亿元建设新产线", "figure": {"label": "投资额", "value": 28.0, "unit": "亿元"}}
-{"id": "f010", "text": "募资总额15.8亿元用于扩产", "figure": {"label": "募资", "value": 15.8, "unit": "亿元"}}
-{"id": "f011", "text": "净利-1.2亿元，同比转亏", "figure": {"label": "净利润", "value": -1.2, "unit": "亿元"}}
-{"id": "f012", "text": "订单金额2.05亿元", "figure": {"label": "订单金额", "value": 2.05, "unit": "亿元"}}
-{"id": "f013", "text": "收入增长18.5%", "figure": {"label": "营收", "value": 18.5, "unit": "%"}}
-{"id": "f014", "text": "净利润同比上升9%", "figure": {"label": "同比", "value": 9.0, "unit": "%"}}
-{"id": "f015", "text": "营收达100亿元关口", "figure": {"label": "营收", "value": 100.0, "unit": "亿元"}}
-{"id": "f016", "text": "同比增长-5.1%", "figure": {"label": "同比", "value": -5.1, "unit": "%"}}
-{"id": "f017", "text": "中标金额3亿元，刷新纪录", "figure": {"label": "中标金额", "value": 3.0, "unit": "亿元"}}
-{"id": "f018", "text": "合同金额1200万元", "figure": {"label": "合同金额", "value": 1200.0, "unit": "万元"}}
-{"id": "f019", "text": "归母净利润0.88亿元", "figure": {"label": "归母净利润", "value": 0.88, "unit": "亿元"}}
-{"id": "f020", "text": "环比增长2.3个百分点", "figure": {"label": "环比", "value": 2.3, "unit": "个百分点"}}
-{"id": "f021", "text": "营收45678元（单店测算）", "figure": {"label": "营收", "value": 45678.0, "unit": "元"}}
-{"id": "f022", "text": "净利润同比增长32%", "figure": {"label": "同比", "value": 32.0, "unit": "%"}}
-{"id": "f023", "text": "同比下降12%", "figure": {"label": "同比", "value": -12.0, "unit": "%"}}
-{"id": "f024", "text": "投资额6.5亿元", "figure": {"label": "投资额", "value": 6.5, "unit": "亿元"}}
-{"id": "f025", "text": "订单金额同比增长40%", "figure": {"label": "同比", "value": 40.0, "unit": "%"}}
-{"id": "f026", "text": "中标金额0.5亿元", "figure": {"label": "中标金额", "value": 0.5, "unit": "亿元"}}
-{"id": "f027", "text": "营收8亿元，净利1亿元", "figure": {"label": "营收", "value": 8.0, "unit": "亿元"}}
-{"id": "f028", "text": "产能将达120万吨/年", "figure": {"label": "产能", "value": 120.0, "unit": "万吨"}}
-{"id": "f029", "text": "募资10亿元完成", "figure": {"label": "募资", "value": 10.0, "unit": "亿元"}}
-{"id": "f030", "text": "收入同比增幅达21.4%", "figure": {"label": "同比", "value": 21.4, "unit": "%"}}
+{"id": "g001", "origin": "synthetic", "text": "公司实现营收12.3亿元，同比增长15%", "figure": {"label": "营收", "value": 12.3, "unit": "亿元"}}
+{"id": "g002", "origin": "synthetic", "text": "净利润3.5亿元，同比下降8.2%", "figure": {"label": "净利润", "value": 3.5, "unit": "亿元"}}
+{"id": "g003", "origin": "synthetic", "text": "归母净利润同比增长25.6%", "figure": {"label": "同比", "value": 25.6, "unit": "%"}}
+{"id": "g004", "origin": "synthetic", "text": "中标金额1.2亿元的重大合同", "figure": {"label": "中标金额", "value": 1.2, "unit": "亿元"}}
+{"id": "g005", "origin": "synthetic", "text": "合同金额8500万元已确认", "figure": {"label": "合同金额", "value": 8500.0, "unit": "万元"}}
+{"id": "g006", "origin": "synthetic", "text": "营业收入同比增12%", "figure": {"label": "同比", "value": 12.0, "unit": "%"}}
+{"id": "g007", "origin": "synthetic", "text": "环比下降3.5%", "figure": {"label": "环比", "value": -3.5, "unit": "%"}}
+{"id": "g008", "origin": "synthetic", "text": "产能提升至50万吨", "figure": {"label": "产能", "value": 50.0, "unit": "万吨"}}
+{"id": "g009", "origin": "synthetic", "text": "投资额约28亿元建设新产线", "figure": {"label": "投资额", "value": 28.0, "unit": "亿元"}}
+{"id": "g010", "origin": "synthetic", "text": "募资总额15.8亿元用于扩产", "figure": {"label": "募资", "value": 15.8, "unit": "亿元"}}
+{"id": "g011", "origin": "synthetic", "text": "净利-1.2亿元，同比转亏", "figure": {"label": "净利润", "value": -1.2, "unit": "亿元"}}
+{"id": "g012", "origin": "synthetic", "text": "订单金额2.05亿元", "figure": {"label": "订单金额", "value": 2.05, "unit": "亿元"}}
+{"id": "g013", "origin": "synthetic", "text": "收入增长18.5%", "figure": {"label": "营收", "value": 18.5, "unit": "%"}}
+{"id": "g014", "origin": "synthetic", "text": "净利润同比上升9%", "figure": {"label": "同比", "value": 9.0, "unit": "%"}}
+{"id": "g015", "origin": "synthetic", "text": "营收达100亿元关口", "figure": {"label": "营收", "value": 100.0, "unit": "亿元"}}
+{"id": "g016", "origin": "synthetic", "text": "同比增长-5.1%", "figure": {"label": "同比", "value": -5.1, "unit": "%"}}
+{"id": "g017", "origin": "synthetic", "text": "中标金额3亿元，刷新纪录", "figure": {"label": "中标金额", "value": 3.0, "unit": "亿元"}}
+{"id": "g018", "origin": "synthetic", "text": "合同金额1200万元", "figure": {"label": "合同金额", "value": 1200.0, "unit": "万元"}}
+{"id": "g019", "origin": "synthetic", "text": "归母净利润0.88亿元", "figure": {"label": "归母净利润", "value": 0.88, "unit": "亿元"}}
+{"id": "g020", "origin": "synthetic", "text": "环比增长2.3个百分点", "figure": {"label": "环比", "value": 2.3, "unit": "个百分点"}}
+{"id": "g021", "origin": "synthetic", "text": "营收45678元（单店测算）", "figure": {"label": "营收", "value": 45678.0, "unit": "元"}}
+{"id": "g022", "origin": "synthetic", "text": "净利润同比增长32%", "figure": {"label": "同比", "value": 32.0, "unit": "%"}}
+{"id": "g023", "origin": "synthetic", "text": "同比下降12%", "figure": {"label": "同比", "value": -12.0, "unit": "%"}}
+{"id": "g024", "origin": "synthetic", "text": "投资额6.5亿元", "figure": {"label": "投资额", "value": 6.5, "unit": "亿元"}}
+{"id": "g025", "origin": "synthetic", "text": "订单金额同比增长40%", "figure": {"label": "同比", "value": 40.0, "unit": "%"}}
+{"id": "g026", "origin": "synthetic", "text": "中标金额0.5亿元", "figure": {"label": "中标金额", "value": 0.5, "unit": "亿元"}}
+{"id": "g027", "origin": "synthetic", "text": "营收8亿元，净利1亿元", "figure": {"label": "营收", "value": 8.0, "unit": "亿元"}}
+{"id": "g028", "origin": "synthetic", "text": "产能将达120万吨/年", "figure": {"label": "产能", "value": 120.0, "unit": "万吨"}}
+{"id": "g029", "origin": "synthetic", "text": "募资10亿元完成", "figure": {"label": "募资", "value": 10.0, "unit": "亿元"}}
+{"id": "g030", "origin": "synthetic", "text": "收入同比增幅达21.4%", "figure": {"label": "同比", "value": 21.4, "unit": "%"}}
+{"id": "g031", "origin": "synthetic", "text": "公司回购股份比例达到1%，累计金额2.3亿元", "figure": {"label": "回购", "value": 1.0, "unit": "%"}}
+{"id": "g032", "origin": "synthetic", "text": "持股5%以上股东拟减持不超过2%", "figure": {"label": "持股", "value": 5.0, "unit": "%"}}
+{"origin": "db", "news_id": 52, "source": "em", "text": "界黄金协会近日发布的报告显示，8月全球黄金ETF净流入180亿美元，为有记录以来第二大单月流入；总资产管理规模环比增长16%至6150亿美", "figure": {"label": "净流入", "value": 180.0, "unit": "亿美元"}, "id": "g033"}
+{"origin": "db", "news_id": 52, "source": "em", "text": "0亿美元，为有记录以来第二大单月流入；总资产管理规模环比增长16%至6150亿美元，持仓量增加121吨至4189吨，创历史新高。年初至今，", "figure": {"label": "规模", "value": 16.0, "unit": "%"}, "id": "g034"}
+{"origin": "db", "news_id": 52, "source": "em", "text": "美元，为有记录以来第二大单月流入；总资产管理规模环比增长16%至6150亿美元，持仓量增加121吨至4189吨，创历史新高。年初至今，", "figure": {"label": "环比", "value": 16.0, "unit": "%"}, "id": "g035"}
+{"origin": "db", "news_id": 52, "source": "em", "text": "以来第二大单月流入；总资产管理规模环比增长16%至6150亿美元，持仓量增加121吨至4189吨，创历史新高。年初至今，全球黄金ETF累", "figure": {"label": "金额", "value": 6150.0, "unit": "亿美元"}, "id": "g036"}
+{"origin": "db", "news_id": 52, "source": "em", "text": "比增长16%至6150亿美元，持仓量增加121吨至4189吨，创历史新高。年初至今，全球黄金ETF累计流入290亿美元，相当于增持1", "figure": {"label": "金额", "value": 4189.0, "unit": "吨"}, "id": "g037"}
+{"origin": "db", "news_id": 92, "source": "em", "text": "多项技术需求在浦江创新论坛发布 揭榜资金规模达6240万元 【多项技术需求在浦江创新论坛发布 揭榜资金规模达6240万元】2026", "figure": {"label": "规模", "value": 6240.0, "unit": "万元"}, "id": "g038"}
+{"origin": "db", "news_id": 92, "source": "em", "text": "多项技术需求在浦江创新论坛发布 揭榜资金规模达6240万元 【多项技术需求在浦江创新论坛发布 揭榜资金规模达6240万元】2026", "figure": {"label": "金额", "value": 6240.0, "unit": "万元"}, "id": "g039"}
+{"origin": "db", "news_id": 233, "source": "em", "text": "末利好来了！事关万亿赛道！我国词元需求呈现爆发式增长 9月12日，据央视新闻报道，中国电信研究院发布的《智能体时代AI基础设施发", "figure": {"label": "同比", "value": 9.0, "unit": "%"}, "id": "g040"}
+{"origin": "db", "news_id": 185, "source": "em", "text": "罗斯空袭对乌克兰基础设施和固定资产的破坏估计今年达100亿美元 乌克兰经济部长表示，俄罗斯空袭对乌克兰基础设施和固定资产的破坏估计今年", "figure": {"label": "金额", "value": 100.0, "unit": "亿美元"}, "id": "g041"}
+{"origin": "db", "news_id": 132, "source": "em", "text": "乌克兰经济部长表示 由于封锁 乌克兰约400亿美元的出口收入面临风险 乌克兰经济部长表示，由于封锁，乌克兰约400亿美元的", "figure": {"label": "金额", "value": 400.0, "unit": "亿美元"}, "id": "g042"}
+{"origin": "db", "news_id": 182, "source": "em", "text": "央企旗下造船巨头启动A股IPO辅导 去年营收近500亿 【央企旗下造船巨头启动A股IPO辅导 去年营收近500亿】证监会官网今", "figure": {"label": "营收", "value": 500.0, "unit": "亿元"}, "id": "g043"}
+{"origin": "db", "news_id": 182, "source": "em", "text": "央企旗下造船巨头启动A股IPO辅导 去年营收近500亿 【央企旗下造船巨头启动A股IPO辅导 去年营收近500亿】证监会官网今", "figure": {"label": "金额", "value": 500.0, "unit": "亿元"}, "id": "g044"}
+{"origin": "db", "news_id": 95, "source": "em", "text": "首单水利设施发电不动产投资信托基金获批，产品发行规模预计15.83亿元。该基金由广东省以飞来峡水利枢纽、潮州供水枢纽电站存量资产为底层资产申报", "figure": {"label": "规模", "value": 15.83, "unit": "亿元"}, "id": "g045"}
+{"origin": "db", "news_id": 42, "source": "em", "text": "创维数字：不存在“大股东持股比例仅13%”情形 【创维数字：不存在“大股东持股比例仅13%”情形】9月11日下午", "figure": {"label": "持股", "value": 13.0, "unit": "%"}, "id": "g046"}
+{"origin": "db", "news_id": 42, "source": "em", "text": "务。公司控股股东为深圳创维-RGB电子有限公司，持股比例51.21%，不存在“大股东持股比例仅13%”的情形。", "figure": {"label": "持股", "value": 51.21, "unit": "%"}, "id": "g047"}
+{"origin": "db", "news_id": 63, "source": "em", "text": "核心驱动力来自智能终端业务的全面复苏，该板块实现营收44亿元，同比增长52.45%，销售数量、营收规模及毛利率三条线同步提升。", "figure": {"label": "营收", "value": 44.0, "unit": "亿元"}, "id": "g048"}
+{"origin": "db", "news_id": 63, "source": "em", "text": "智能终端业务的全面复苏，该板块实现营收44亿元，同比增长52.45%，销售数量、营收规模及毛利率三条线同步提升。", "figure": {"label": "同比", "value": 52.45, "unit": "%"}, "id": "g049"}
+{"origin": "db", "news_id": 97, "source": "em", "text": "方向，推出12项精准扶持举措，单项支持资金最高可达300万元。", "figure": {"label": "金额", "value": 300.0, "unit": "万元"}, "id": "g050"}
+{"origin": "db", "news_id": 176, "source": "em", "text": "本绑定，有望补齐生态闭环。2025年传奇IP市场规模355.5亿元，累计超3700亿元。", "figure": {"label": "规模", "value": 355.5, "unit": "亿元"}, "id": "g051"}
+{"origin": "db", "news_id": 200, "source": "em", "text": "联分会秘书长崔东树发文称，2026年8月车市零售环比回升5.5%，是油价高位压制、宏观景气偏弱、政策预期升温、成都车展带动等多重因素交织", "figure": {"label": "环比", "value": 5.5, "unit": "%"}, "id": "g052"}
+{"origin": "db", "news_id": 169, "source": "em", "text": "026年至2028年部件焕新服务器集中采购项目，中标金额为4.18亿元。", "figure": {"label": "中标金额", "value": 4.18, "unit": "亿元"}, "id": "g053"}
+{"origin": "db", "news_id": 169, "source": "em", "text": "至2028年部件焕新服务器集中采购项目，中标金额为4.18亿元。", "figure": {"label": "金额", "value": 4.18, "unit": "亿元"}, "id": "g054"}
+{"origin": "db", "news_id": 104, "source": "em", "text": "到2030年 全国新型储能规模将达3亿千瓦 【到2030年 全国新型储能规模将达3亿千瓦】今年以来，我国新型储能建", "figure": {"label": "规模", "value": 3.0, "unit": "亿千瓦"}, "id": "g055"}
+{"origin": "db", "news_id": 104, "source": "em", "text": "高速发展态势。截至6月底，全国已建成投运新型储能装机规模达1.53亿千瓦/3.96亿千瓦时，同比增长61%。全国新型储能利用情况逐年向好，202", "figure": {"label": "装机", "value": 1.53, "unit": "亿千瓦"}, "id": "g056"}
+{"origin": "db", "news_id": 104, "source": "em", "text": "储能装机规模达1.53亿千瓦/3.96亿千瓦时，同比增长61%。全国新型储能利用情况逐年向好，2023年、2024年、2025年全国新", "figure": {"label": "同比", "value": 61.0, "unit": "%"}, "id": "g057"}
+{"origin": "db", "news_id": 104, "source": "em", "text": "到2030年 全国新型储能规模将达3亿千瓦 【到2030年 全国新型储能规模将达3亿千瓦】今年以来，我国新型储", "figure": {"label": "金额", "value": 3.0, "unit": "亿元"}, "id": "g058"}
+{"origin": "db", "news_id": 104, "source": "em", "text": "态势。截至6月底，全国已建成投运新型储能装机规模达1.53亿千瓦/3.96亿千瓦时，同比增长61%。全国新型储能利用情况逐年向好，2", "figure": {"label": "金额", "value": 1.53, "unit": "亿元"}, "id": "g059"}
+{"origin": "db", "news_id": 53, "source": "em", "text": "进场观众就超过10万人，三天合计到场近19万人，同比增长32%。记者在现场交流发现，从产品代际来看，800G光模块仍是当前市场主力出货", "figure": {"label": "同比", "value": 32.0, "unit": "%"}, "id": "g060"}
+{"origin": "db", "news_id": 53, "source": "em", "text": "小批量供货，但受下游交换机和服务器硬件配套制约，规模放量或仍需1-2年。", "figure": {"label": "规模", "value": 1.0, "unit": "元"}, "id": "g061"}
+{"origin": "db", "news_id": 740, "source": "em_announce", "text": "郑中设计:关于控股股东权益变动触及1%整数倍暨减持计划实施完毕的公告 权益变动报告书 郑中设计 郑中设计:关于", "figure": {"label": "持股", "value": 1.0, "unit": "%"}, "id": "g062"}
+{"origin": "db", "news_id": 1666, "source": "em_announce", "text": "国银河证券股份有限公司关于贝因美股份有限公司详式权益变动报告书之2026年半年度持续督导意见 保荐/核查意见 贝因美 贝因美:中国银河证券股份有", "figure": {"label": "持股", "value": 2026.0, "unit": "%"}, "id": "g063"}
+{"origin": "db", "news_id": 1374, "source": "em_announce", "text": "光韵达:关于回购注销2026年限制性股票激励计划部分首次授予限制性股票的公告 股权激励进展公告 光韵", "figure": {"label": "回购", "value": 2026.0, "unit": "%"}, "id": "g064"}
+{"origin": "db", "news_id": 1506, "source": "em_announce", "text": "通富微电:关于持股5%以上股东持股比例被动稀释触及1%整数倍的公告 股东/实际控制人股份减持", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g065"}
+{"origin": "db", "news_id": 1506, "source": "em_announce", "text": "通富微电:关于持股5%以上股东持股比例被动稀释触及1%整数倍的公告 股东/实际控制人股份减持 通富微电 通富微电:关于持股5%", "figure": {"label": "持股", "value": 1.0, "unit": "%"}, "id": "g066"}
+{"origin": "db", "news_id": 1232, "source": "em_announce", "text": "物产金轮:关于持股5%以上股东减持计划期限届满暨实施结果的公告 股东/实际控制人股份减持 物产", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g067"}
+{"origin": "db", "news_id": 945, "source": "em_announce", "text": "国际金融股份有限公司关于中持水务股份有限公司详式权益变动报告书之2026年第二季度持续督导意见 保荐/核查意见 中持股份 中持股份:中国国际金融", "figure": {"label": "持股", "value": 2026.0, "unit": "%"}, "id": "g068"}
+{"origin": "db", "news_id": 691, "source": "em_announce", "text": "华峰测控:华峰测控股东询价转让结果报告书暨持股5%以上股东权益变动触及5%整数倍的提示性公告 权益变动报告书 华峰测控 华", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g069"}
+{"origin": "db", "news_id": 1095, "source": "em_announce", "text": "腾达科技:关于持股5%以上股东股份减持计划期限届满暨实施结果的公告 股东/实际控制人股份减持", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g070"}
+{"origin": "db", "news_id": 1444, "source": "em_announce", "text": "东鹏控股:关于回购公司股份比例达到1%的进展公告 回购进展情况 东鹏控股 东鹏控股:关于回购公司股份比例达到1", "figure": {"label": "回购", "value": 1.0, "unit": "%"}, "id": "g071"}
+{"origin": "db", "news_id": 1555, "source": "em_announce", "text": "浙江新能:浙江新能关于持股5%以上股东减持股份结果公告 股东/实际控制人股份减持 浙江新能 浙江新能:", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g072"}
+{"origin": "db", "news_id": 447, "source": "em_announce", "text": "科前生物:武汉科前生物股份有限公司关于回购注销2025年员工持股计划股票暨通知债权人的公告 通知债权人公告 科前生物 科前生物", "figure": {"label": "回购", "value": 2025.0, "unit": "%"}, "id": "g073"}
+{"origin": "db", "news_id": 1755, "source": "em_announce", "text": "易明医药:关于回购公司股份比例达到2%及回购实施结果暨股份变动的公告 股本变动 易明医药 易明医药:关于回购公", "figure": {"label": "回购", "value": 2.0, "unit": "%"}, "id": "g074"}
+{"origin": "db", "news_id": 1636, "source": "em_announce", "text": "利君股份:关于持股5%以上股东部分股份质押及解除质押的公告 股份质押、冻结 利君股份 利君股份", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g075"}
+{"origin": "db", "news_id": 1163, "source": "em_announce", "text": "锦天城律师事务所关于杭州天地数码科技股份有限公司回购注销2023年限制性股票激励计划部分限制性股票相关事宜的法律意见书 法律意见书 天地", "figure": {"label": "回购", "value": 2023.0, "unit": "%"}, "id": "g076"}
+{"origin": "db", "news_id": 1537, "source": "em_announce", "text": "华达科技:华达汽车科技股份有限公司关于持股5%以上股东增持股份计划实施期限过半的进展公告 股东/实际控制人股份增持 华", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g077"}
+{"origin": "db", "news_id": 453, "source": "em_announce", "text": "跃岭股份:关于回购股份比例达到2%暨回购进展的公告 回购进展情况 跃岭股份 跃岭股份:关于回购股份比例达到", "figure": {"label": "回购", "value": 2.0, "unit": "%"}, "id": "g078"}
+{"origin": "db", "news_id": 982, "source": "em_announce", "text": "限公司关于好利来(中国)电子科技股份有限公司详式权益变动报告书之2026年半年度持续督导意见 保荐/核查意见 好利科技 好利科技:金圆统一证券有", "figure": {"label": "持股", "value": 2026.0, "unit": "%"}, "id": "g079"}
+{"origin": "db", "news_id": 1340, "source": "em_announce", "text": "好上好:关于持股5%以上股东权益变动触及1%整数倍的公告 权益变动报告书 好上好 好上好:关", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g080"}
+{"origin": "db", "news_id": 1340, "source": "em_announce", "text": "好上好:关于持股5%以上股东权益变动触及1%整数倍的公告 权益变动报告书 好上好 好上好:关于持股5%以上股东权益变", "figure": {"label": "持股", "value": 1.0, "unit": "%"}, "id": "g081"}
+{"origin": "db", "news_id": 464, "source": "em_announce", "text": "神马电力:关于持股5%以上股东减持计划时间届满暨减持结果的公告 股东/实际控制人股份减持 神马", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g082"}
+{"origin": "db", "news_id": 1237, "source": "em_announce", "text": "上海凤凰:上海凤凰关于股份回购比例达到总股本2%暨回购进展公告 回购进展情况 上海凤凰 上海凤凰:上海凤凰关于股份回购比", "figure": {"label": "回购", "value": 2.0, "unit": "%"}, "id": "g083"}
+{"origin": "db", "news_id": 1150, "source": "em_announce", "text": "湖南海利:湖南海利关于控股股东权益变动触及1%刻度暨增持计划进展情况的提示性公告 权益变动报告书 湖南海利 湖南海利:", "figure": {"label": "持股", "value": 1.0, "unit": "%"}, "id": "g084"}
+{"origin": "db", "news_id": 1042, "source": "em_announce", "text": "恒申新材:关于持股5%以上股东部分股份被司法拍卖的提示性公告 诉讼仲裁 恒申新材 恒申新材:关", "figure": {"label": "持股", "value": 5.0, "unit": "%"}, "id": "g085"}
+{"origin": "db", "news_id": 98, "source": "em", "text": "陈扬帆：适度超前建强算力基础设施 AIDC总签约规模超7GW 【中国移动总经理陈扬帆：适度超前建强算力基础设施 AIDC总签约规", "figure": {"label": "规模", "value": 7.0, "unit": "元"}, "id": "g086"}
+{"origin": "db", "news_id": 131, "source": "em", "text": "时表示，今年上半年，公司机器人相关零部件业务实现收入1784万元，同比增长115.51%。公司已建立完善的机器人核心零部件产品体系，面向", "figure": {"label": "营收", "value": 1784.0, "unit": "万元"}, "id": "g087"}
+{"origin": "db", "news_id": 131, "source": "em", "text": "，公司机器人相关零部件业务实现收入1784万元，同比增长115.51%。公司已建立完善的机器人核心零部件产品体系，面向机器人领域推出无框力矩电", "figure": {"label": "同比", "value": 115.51, "unit": "%"}, "id": "g088"}
+{"origin": "db", "news_id": 171, "source": "em", "text": "必选项。受燃油价格走高等因素推动，美国8月CPI同比涨幅保持在3.4%的高位，核心CPI同比涨幅则从2.5%回落至2.4%，均与市场预期一致。", "figure": {"label": "同比", "value": 3.4, "unit": "%"}, "id": "g089"}
+{"origin": "db", "news_id": 171, "source": "em", "text": "月CPI同比涨幅保持在3.4%的高位，核心CPI同比涨幅则从2.5%回落至2.4%，均与市场预期一致。8月CPI环比上涨0.4%，符合市场预", "figure": {"label": "同比", "value": 2.5, "unit": "%"}, "id": "g090"}
+{"origin": "db", "news_id": 171, "source": "em", "text": "5%回落至2.4%，均与市场预期一致。8月CPI环比上涨0.4%，符合市场预期；但核心CPI环比上涨0.3%，高于市场预期的0.2%，创", "figure": {"label": "环比", "value": 0.4, "unit": "%"}, "id": "g091"}
+{"origin": "db", "news_id": 171, "source": "em", "text": "PI环比上涨0.4%，符合市场预期；但核心CPI环比上涨0.3%，高于市场预期的0.2%，创下今年4月以来最大单月涨幅。", "figure": {"label": "环比", "value": 0.3, "unit": "%"}, "id": "g092"}
+{"origin": "db", "news_id": 167, "source": "em", "text": "号】中金9月12日发布研报称，美国8月CPI季调环比上涨0.4%（上月0.1%），同比上涨3.4%（上月3.4%）；核心CPI环比上涨0", "figure": {"label": "环比", "value": 0.4, "unit": "%"}, "id": "g093"}
+{"origin": "db", "news_id": 167, "source": "em", "text": "8月CPI季调环比上涨0.4%（上月0.1%），同比上涨3.4%（上月3.4%）；核心CPI环比上涨0.3%（上月0.2%），同比上涨2", "figure": {"label": "同比", "value": 3.4, "unit": "%"}, "id": "g094"}
+{"origin": "db", "news_id": 167, "source": "em", "text": "），同比上涨3.4%（上月3.4%）；核心CPI环比上涨0.3%（上月0.2%），同比上涨2.4%（上月2.5%），略高于市场预期。通胀", "figure": {"label": "环比", "value": 0.3, "unit": "%"}, "id": "g095"}
+{"origin": "db", "news_id": 167, "source": "em", "text": "）；核心CPI环比上涨0.3%（上月0.2%），同比上涨2.4%（上月2.5%），略高于市场预期。通胀环比反弹主要因能源价格上涨、电信涨", "figure": {"label": "同比", "value": 2.4, "unit": "%"}, "id": "g096"}
+{"origin": "db", "news_id": 43, "source": "em", "text": "今年前8个月 深圳对其他金砖成员国进出口同比增长11.5% 【今年前8个月 深圳对其他金砖成员国进出口同比增长11.5%】从深圳海", "figure": {"label": "进出口", "value": 11.5, "unit": "%"}, "id": "g097"}
+{"origin": "db", "news_id": 43, "source": "em", "text": "深圳海关获悉，今年前8个月，深圳对其他金砖成员国进出口货值达2468.9亿元，同比增长11.5%。其中，出口货值达2077.7亿元，同比增长7.5%", "figure": {"label": "进出口", "value": 2468.9, "unit": "亿元"}, "id": "g098"}
+{"origin": "db", "news_id": 43, "source": "em", "text": "今年前8个月 深圳对其他金砖成员国进出口同比增长11.5% 【今年前8个月 深圳对其他金砖成员国进出口同比增长11.5%】从深圳海", "figure": {"label": "同比", "value": 11.5, "unit": "%"}, "id": "g099"}
+{"origin": "db", "news_id": 43, "source": "em", "text": "长11.5%。其中，出口货值达2077.7亿元，同比增长7.5%；进口货值达391.2亿元，同比增长38.9%。", "figure": {"label": "同比", "value": 7.5, "unit": "%"}, "id": "g100"}

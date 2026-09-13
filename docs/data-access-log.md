@@ -30,3 +30,10 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-13 | akshare.stock_notice_report | P2 公告：代码/名称/公告标题/类型/日期/网址；按日 `YYYYMMDD` | `make ingest-announcements` → source=`em_announce` |
 | 2026-09-13 | eastmoney np-anotice-stock | 周日 `total_hits=0` 时 akshare 抛 `KeyError: 代码` | 自研 `fetch_em_notice_report` + 向前回退最多 7 天 |
 | 2026-09-13 | rule_v1 NewsExtractor | 事件表 `event`/`event_security`；数字金标 30 条 soft=100% | `make extract-news` / `make extraction-eval` |
+| 2026-09-13 | figures_gold ≥100 | 入库新闻摘录为主（db≈68 + synthetic 模板）；soft=100% | `scripts/build_figures_gold.py` + `make extraction-eval` |
+| 2026-09-13 | daily_live_pipeline | 挂载 news/announce/extract（软失败 degraded） | `refresh_daily_news_events`；`--skip-news` 可关 |
+| 2026-09-13 | em_announce backfill | 2026-09-02～11 共 8 个交易日，入库 11379 条；抽取事件约 4.7k | `scripts/backfill_announcements_and_rereport.py` |
+| 2026-09-13 | daily report | 新增「二、重要事件」；已重写 09-02～11 交易日日报 | `load_events_for_as_of` + `make rereport-with-events` |
+| 2026-09-13 | news.related_symbol | 公告代码未落库 → 事件标的全空 | migration `0006` + extract hint；URL 回填 `make relink-event-symbols` |
+| 2026-09-13 | security_industry | 重跑日报时申万归属表为空 | `make ingest-industry` 后 `rereport-with-events` |
+

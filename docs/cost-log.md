@@ -12,3 +12,8 @@ Append-only notes from ReporterAgent / later Agents.
 | 2026-09-12T08:32:00.488366+00:00 | 20260901-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
 | 2026-09-12T08:34:56.747448+00:00 | 20260901-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
 | 2026-09-12T09:34:10.117767+00:00 | 20260901-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-13T05:13:26.093696+00:00 | 20260901-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-13T05:13:55.831922+00:00 | 20260901-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-13T05:14:55.315786+00:00 | 20260901-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-13T05:25:19.556067+00:00 | 20260904-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-13T05:25:21.810047+00:00 | 20260904-cn-daily | reporter | deterministic | deterministic | 0 | 0 | 0.0000 |
