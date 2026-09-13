@@ -1,0 +1,46 @@
+# LLM model tiers + ADR-0010 budget allocations.
+# Concrete model names are config-only (iterate without doc churn).
+# Override API key via LLM_API_KEY; optional LLM_BASE_URL / LLM_DEFAULT_TIER.
+
+tiers:
+  small:
+    provider: openai_compatible
+    model: deepseek-chat
+    base_url: https://api.deepseek.com/v1
+    max_tokens_out: 512
+    temperature: 0.0
+    # Approximate public list prices (USD / 1M tokens); update when vendor changes.
+    input_usd_per_1m: 0.14
+    output_usd_per_1m: 0.28
+  medium:
+    provider: openai_compatible
+    model: deepseek-chat
+    base_url: https://api.deepseek.com/v1
+    max_tokens_out: 2048
+    temperature: 0.3
+    input_usd_per_1m: 0.14
+    output_usd_per_1m: 0.28
+  large:
+    provider: openai_compatible
+    model: deepseek-reasoner
+    base_url: https://api.deepseek.com/v1
+    max_tokens_out: 4096
+    temperature: 0.3
+    input_usd_per_1m: 0.55
+    output_usd_per_1m: 2.19
+
+budget:
+  daily_usd_limit: 1.50
+  monthly_usd_limit: 40.00
+  allocations:
+    daily_research: 0.80
+    monitoring: 0.30
+    news_extraction: 0.30
+    adhoc: 0.10
+  on_exceed:
+    daily_research: degrade
+    monitoring: l1_only
+    news_extraction: skip
+    adhoc: abort
+  per_call_max_tokens_in: 30000
+  per_call_max_tokens_out: 4000
