@@ -57,16 +57,17 @@ def test_drafts_from_news_row() -> None:
     assert drafts[1].chunk_index == 1
 
 
-def test_report_mda_drafts_placeholder() -> None:
+def test_report_mda_drafts() -> None:
     visible = datetime(2026, 4, 15, 0, 0, tzinfo=UTC)
     drafts = report_mda_drafts(
-        doc_ref="report:600519:2025",
-        content="管理层讨论与分析：" + ("经营" * 400),
+        doc_ref="report:600519.SH:2025:annual:mda",
+        content="一、概述\n管理层讨论与分析：" + ("经营" * 400),
         visible_at=visible,
         security_id=7,
     )
     assert drafts
     assert drafts[0].doc_type == "report"
-    assert drafts[0].doc_ref == "report:600519:2025"
+    assert drafts[0].doc_ref == "report:600519.SH:2025:annual:mda"
     assert drafts[0].security_id == 7
     assert drafts[0].visible_at == visible
+    assert drafts[0].content.startswith("[MD&A]")

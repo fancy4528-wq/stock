@@ -324,6 +324,52 @@ def _run_ingest_chunks(
     return 0
 
 
+def _run_ingest_reports(
+    *,
+    pack_path: Path | None,
+    load: bool,
+    archive: bool,
+) -> int:
+    from datetime import date as date_cls
+
+    from quantagent.data.collectors.reports.pack import (
+        ReportPackCollector,
+        default_fixture_pack_path,
+        load_report_packs,
+    )
+    from quantagent.data.loaders.chunk import ChunkLoader
+    from quantagent.knowledge.ingestion.documents import drafts_from_report_pack
+
+    path = pack_path or default_fixture_pack_path()
+    packs = load_report_packs(path)
+    drafts = []
+    for pack in packs:
+        drafts.extend(drafts_from_report_pack(pack))
+    mda_n = sum(1 for d in drafts if d.doc_ref.endswith(":mda"))
+    risk_n = sum(1 for d in drafts if d.doc_ref.endswith(":risk"))
+    loader = ChunkLoader()
+    print(
+        f"ingest-reports packs={len(packs)} drafts={len(drafts)} "
+        f"mda_chunks={mda_n} risk_chunks={risk_n} "
+        f"embedder={loader._embedder.model_name} path={path}"
+    )
+    if archive:
+        import asyncio
+
+        collector = ReportPackCollector(pack_path=path)
+        batch = asyncio.run(collector.collect(date_cls.today(), pack_path=path))
+        print(
+            f"ingest-reports archived batch_id={batch.batch_id} "
+            f"rows={batch.meta.get('rows')}"
+        )
+    if load:
+        stats = loader.load_drafts(drafts)
+        print(f"ingest-reports loaded chunks={stats['chunks']}")
+    else:
+        print("ingest-reports dry-run (pass --load to persist)")
+    return 0
+
+
 def _run_rag_smoke(
     *,
     query: str,
@@ -1152,6 +1198,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Persist chunks into document_chunk",
     )
 
+    ingest_reports = sub.add_parser(
+        "ingest-reports",
+        help="P2 K2: MD&A + risk-factor packs → document_chunk (visible_at=disclose)",
+    )
+    ingest_reports.add_argument(
+        "--pack",
+        type=Path,
+        default=None,
+        help="JSONL/JSON report pack path (default: tests/fixtures/reports/k2_packs.jsonl)",
+    )
+    ingest_reports.add_argument(
+        "--load",
+        action="store_true",
+        help="Persist chunks into document_chunk",
+    )
+    ingest_reports.add_argument(
+        "--archive",
+        action="store_true",
+        help="Also write RawBatch parquet under data/raw",
+    )
+
     rag_smoke = sub.add_parser(
         "rag-smoke",
         help="P2 RAG: embed query + search_chunks_as_of smoke print",
@@ -1228,6 +1295,13 @@ def main(argv: list[str] | None = None) -> int:
             limit=int(args.limit),
             since=args.since,
             load=bool(args.load),
+        )
+
+    if args.command == "ingest-reports":
+        return _run_ingest_reports(
+            pack_path=args.pack,
+            load=bool(args.load),
+            archive=bool(args.archive),
         )
 
     if args.command == "rag-smoke":
