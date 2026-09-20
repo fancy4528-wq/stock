@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -26,7 +26,8 @@ class AgentContext(BaseModel):
     run_id: str
     token_budget_usd: float = 1.0
     code_version: str = "dev"
-    upstream: dict[str, BaseModel] = Field(default_factory=dict)
+    # Views, lists, and orchestration metadata (not only BaseModel).
+    upstream: dict[str, Any] = Field(default_factory=dict)
 
 
 TOut_co = TypeVar("TOut_co", bound=BaseModel, covariant=True)

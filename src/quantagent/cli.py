@@ -389,6 +389,52 @@ def _run_rag_smoke(
     return 0
 
 
+def _run_research_smoke(*, as_of: date, max_stocks: int) -> int:
+    import asyncio
+
+    from quantagent.agents.fixtures import sample_research_facts
+    from quantagent.agents.orchestrator import Orchestrator
+    from quantagent.agents.tools import build_default_tool_registry
+
+    facts = sample_research_facts(as_of)
+    # Offline smoke: registry without live RAG (avoids DB/embedder dependency).
+    tools = build_default_tool_registry(include_knowledge=False)
+    orch = Orchestrator(tools=tools, max_stocks=max_stocks, max_concurrency=4)
+
+    async def _go():
+        return await orch.run_daily(facts.as_of, facts.market, facts)
+
+    result = asyncio.run(_go())
+    if result.aborted or result.brief is None:
+        print(f"research-smoke ABORTED: {result.abort_reason}")
+        return 1
+    brief = result.brief
+    print(
+        f"research-smoke as_of={brief.as_of.isoformat()} run_id={brief.run_id} "
+        f"regime={brief.regime} sectors={len(brief.sector_ranking)} "
+        f"stocks={len(brief.stock_ranking)} stance={brief.allocation_stance.equity_stance}"
+    )
+    if result.skipped_sectors:
+        print(f"  skipped_sectors={result.skipped_sectors}")
+    if result.skipped_stocks:
+        print(f"  skipped_stocks={result.skipped_stocks}")
+    if result.degradations:
+        print(f"  degradations={[d.action for d in result.degradations]}")
+    for row in brief.sector_ranking[:5]:
+        print(
+            f"  sector#{row.rank} {row.sector_code} {row.sector_name} "
+            f"score={row.score:.2f} ({row.sector_type})"
+        )
+    for row in brief.stock_ranking[:5]:
+        print(
+            f"  stock#{row.rank} {row.symbol} {row.name} "
+            f"score={row.score:.2f} hint={row.action_hint}"
+        )
+    if brief.inputs_summary.data_quality_note:
+        print(f"  quality_note={brief.inputs_summary.data_quality_note}")
+    return 0
+
+
 async def _ingest_calendar(
     *,
     start: date | None,
@@ -1232,6 +1278,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     rag_smoke.add_argument("--top-k", type=int, default=5)
 
+    research_smoke = sub.add_parser(
+        "research-smoke",
+        help="P2 multi-Agent skeleton: Macro/Sector/Stock/Chief via Orchestrator",
+    )
+    research_smoke.add_argument(
+        "--as-of",
+        type=_parse_date,
+        default=None,
+        help="as_of date for fixture facts (default: 2026-09-12 sample)",
+    )
+    research_smoke.add_argument("--max-stocks", type=int, default=10)
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -1311,6 +1369,10 @@ def main(argv: list[str] | None = None) -> int:
             as_of=as_of,
             top_k=int(args.top_k),
         )
+
+    if args.command == "research-smoke":
+        as_of = args.as_of or date(2026, 9, 12)
+        return _run_research_smoke(as_of=as_of, max_stocks=int(args.max_stocks))
 
     if args.command == "report":
         synthetic = not bool(args.live)
