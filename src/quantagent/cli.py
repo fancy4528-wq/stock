@@ -442,6 +442,7 @@ def _run_research_live(
     max_stocks: int,
     max_industries: int,
     no_knowledge: bool,
+    no_llm: bool,
 ) -> int:
     import asyncio
 
@@ -454,6 +455,7 @@ def _run_research_live(
             max_stocks=max_stocks,
             max_industries=max_industries,
             include_knowledge=not no_knowledge,
+            use_llm=not no_llm,
         )
 
     result, facts = asyncio.run(_go())
@@ -469,7 +471,8 @@ def _run_research_live(
     print(
         f"research-live brief regime={brief.regime} "
         f"sectors={len(brief.sector_ranking)} stocks={len(brief.stock_ranking)} "
-        f"stance={brief.allocation_stance.equity_stance}"
+        f"stance={brief.allocation_stance.equity_stance} "
+        f"llm_usd={result.llm_cost_usd:.4f}"
     )
     if result.skipped_sectors:
         print(f"  skipped_sectors={result.skipped_sectors}")
@@ -1358,6 +1361,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip search_knowledge (no embedder/DB chunk dependency)",
     )
+    research_live.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Force heuristic-only (ignore LLM_API_KEY)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -1450,6 +1458,7 @@ def main(argv: list[str] | None = None) -> int:
             max_stocks=int(args.max_stocks),
             max_industries=int(args.max_industries),
             no_knowledge=bool(args.no_knowledge),
+            no_llm=bool(args.no_llm),
         )
 
     if args.command == "report":

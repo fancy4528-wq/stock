@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from quantagent.agents._heuristic import evidence, point, risk, score_from_return
 from quantagent.agents.base import AgentContext
+from quantagent.agents.llm.structured import ResearchLlmBundle, complete_research_model
 from quantagent.agents.schemas.views import (
     SectorDimensions,
     SectorView,
@@ -171,6 +172,46 @@ def _build_sector_view(
     return validate_model(view)  # type: ignore[return-value]
 
 
+async def _maybe_refine_sector(
+    ctx: AgentContext,
+    heuristic: SectorView,
+    *,
+    llm: ResearchLlmBundle | None,
+    agent_name: str,
+    prompt_name: str,
+    tier: str,
+) -> SectorView:
+    if llm is None or not llm.enabled():
+        return heuristic
+    inject = {
+        "as_of": ctx.as_of.isoformat(),
+        "sector_type": heuristic.sector_type,
+        "sector_code": heuristic.sector_code,
+        "sector_name": heuristic.sector_name,
+        "evidence": [e.model_dump(mode="json") for e in heuristic.evidence],
+        "candidates": [c.model_dump(mode="json") for c in heuristic.candidates],
+    }
+    refined = await complete_research_model(
+        llm,
+        agent=agent_name,
+        tier=tier,
+        prompt_name=prompt_name,
+        user_payload={"scaffold": heuristic.model_dump(mode="json")},
+        run_id=ctx.run_id,
+        model_cls=SectorView,
+        inject=inject,
+        repair_hint="retry",
+        user_prefix=(
+            "在 scaffold SectorView 基础上 refinement（thesis / bull/bear / uncertainties）；"
+            "保留 evidence_refs 与 candidates；不要编造数字；仅输出 JSON：\n"
+        ),
+    )
+    if refined is None:
+        return heuristic
+    require_evidence(refined.evidence, min_count=2)
+    return validate_model(refined)  # type: ignore[return-value]
+
+
 class IndustryAgent:
     name = "industry"
     tier = "medium"
@@ -180,21 +221,31 @@ class IndustryAgent:
         seed: SectorSeed,
         *,
         tools: ToolRegistry | None = None,
+        llm: ResearchLlmBundle | None = None,
         force_fail: bool = False,
     ) -> None:
         self._seed = seed
         self._tools = tools
+        self._llm = llm
         self._force_fail = force_fail
 
     async def run(self, ctx: AgentContext) -> SectorView:
         if self._force_fail:
             raise AgentError(f"industry agent forced failure: {self._seed.code}")
-        return _build_sector_view(
+        heuristic = _build_sector_view(
             ctx,
             seed=self._seed,
             sector_type="industry",
             horizon="3m",
             tools=self._tools,
+        )
+        return await _maybe_refine_sector(
+            ctx,
+            heuristic,
+            llm=self._llm,
+            agent_name=self.name,
+            prompt_name="industry",
+            tier=self.tier,
         )
 
 
@@ -207,10 +258,12 @@ class ThemeAgent:
         seed: SectorSeed,
         *,
         tools: ToolRegistry | None = None,
+        llm: ResearchLlmBundle | None = None,
         force_fail: bool = False,
     ) -> None:
         self._seed = seed
         self._tools = tools
+        self._llm = llm
         self._force_fail = force_fail
 
     async def run(self, ctx: AgentContext) -> SectorView:
@@ -231,11 +284,19 @@ class ThemeAgent:
             days_since_activation=days,
             evidence=f"ret_1d={self._seed.ret_1d:+.2%} ret_20d={self._seed.ret_20d:+.2%}",
         )
-        return _build_sector_view(
+        heuristic = _build_sector_view(
             ctx,
             seed=self._seed,
             sector_type="theme",
             horizon="1m",
             lifecycle=lifecycle,
             tools=self._tools,
+        )
+        return await _maybe_refine_sector(
+            ctx,
+            heuristic,
+            llm=self._llm,
+            agent_name=self.name,
+            prompt_name="theme",
+            tier=self.tier,
         )
