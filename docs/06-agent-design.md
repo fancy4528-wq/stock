@@ -950,3 +950,20 @@ Agent 输出好不好，不能靠读起来顺不顺。需要量化评估，详�
 **最后三项是真正的考验。** 前四项是工程质量，后三项才回答"这个 Agent 有没有用"。
 
 要做好心理准备：**Agent 层的输出 IC 可能接近 0**。这不代表项目失败——Agent 提供的解释性和红旗识别本身有价值。但必须诚实地测出来，而不是假定它有效。
+
+## 9. 实现进度（骨架）
+
+| 组件 | 状态 | 入口 |
+|---|---|---|
+| `MacroView` / `SectorView` / `StockView` / `MarketBrief` schema | ✅ | `agents/schemas/views.py` |
+| `ToolRegistry`（强制注入 `as_of`，拒绝 Agent 自带） | ✅ | `agents/tools/dispatch.py` |
+| `search_knowledge` → RAG PIT | ✅ | `agents/tools/knowledge.py` |
+| Stage 4a `screen_shortlist` | ✅ | `agents/screener.py` |
+| Macro / Industry / Theme / Stock / Chief（启发式骨架） | ✅ | `agents/{macro,sector,stock,chief}/` |
+| `Orchestrator`（并发、跳过失败、宏观中性降级） | ✅ | `agents/orchestrator.py` |
+| Prompt v1 占位 | ✅ | `prompts/{macro,industry,theme,stock,chief}/v1.md` |
+| 真实宏观/财务/资金流工具 | ⏳ 后续接 DB | — |
+| LLM 路径（`complete_with_budget`）挂到研究 Agent | ⏳ 后续 | — |
+| `shadow_agent` 组合 | ⏳ Gate 2 | — |
+
+离线自检：`make research-smoke`（fixture，不连库）。

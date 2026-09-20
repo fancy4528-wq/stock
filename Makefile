@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -83,6 +83,9 @@ ingest-reports: ## P2 K2：年报/半年报 MD&A+风险因素切片入库（默�
 
 rag-smoke: ## P2 RAG：查询 smoke（需先 ingest-chunks/ingest-reports + db migrate）
 	uv run python -m quantagent.cli rag-smoke --query "管理层讨论 风险因素" --as-of $(TODAY) --top-k 5
+
+research-smoke: ## P2 多 Agent 骨架：Orchestrator → MarketBrief（fixture，不连库）
+	uv run python -m quantagent.cli research-smoke --max-stocks 10
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN
