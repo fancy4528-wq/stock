@@ -44,4 +44,5 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-20 | research-live | PIT 组装 ResearchFacts；Macro/Industry/Stock 调 DB 工具；fixture smoke 仍离线 | `make research-live`；`facts_builder.py` |
 | 2026-09-20 | research LLM path | Macro/Sector/Stock/Chief：`complete_with_budget` + scaffold refinement；预算/解析失败回退启发式；cost-log | `agents/llm/structured.py`；`LLM_API_KEY` / `--no-llm` |
 | 2026-09-20 | Agent output validation | Gate 2：evidence 非空/refs 可解析/PIT；figures WARN；Orchestrator 绑定 `AgentTrace` | `agents/validation.py`；`make research-smoke` 打印 untraceable |
+| 2026-09-20 | shadow_agent | Gate 2：第三 shadow；信号=`MarketBrief.stock_ranking`；live 日报软跑启发式 research；按组合幂等追赶 | `evaluation/shadow/`；`data/shadow/shadow_agent.jsonl` |
 
