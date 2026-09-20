@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 
 from quantagent.core.assertions import assert_no_lookahead
 from quantagent.shared.config import Settings, get_settings
+from quantagent.shared.errors import LookaheadError
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -268,3 +269,109 @@ class PITRepository:
         if not df.is_empty() and "snapshot_date" in df.columns:
             assert_no_lookahead(df, as_of, "snapshot_date")
         return df
+
+    def search_chunks(
+        self,
+        embedding: list[float],
+        *,
+        as_of: date,
+        limit: int = 5,
+        security_id: int | None = None,
+    ) -> list[dict[str, object]]:
+        """RAG search via ``search_chunks_as_of`` (sole SQL entry for chunks).
+
+        Enforces ``visible_at <= as_of`` and ``expires_at`` bidirectional filter
+        inside the SQL function. ``as_of`` is keyword-only (no default).
+        """
+        if limit <= 0:
+            return []
+        if not embedding:
+            raise ValueError("embedding must be non-empty")
+        vec = "[" + ",".join(f"{float(x):.8f}" for x in embedding) + "]"
+        stmt = text(
+            """
+            SELECT chunk_id, content, doc_type, doc_ref, security_id, visible_at, distance
+            FROM search_chunks_as_of(
+                CAST(:embedding AS vector),
+                :as_of,
+                :limit,
+                :security_id
+            )
+            """
+        )
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    stmt,
+                    {
+                        "embedding": vec,
+                        "as_of": self._eod(as_of),
+                        "limit": int(limit),
+                        "security_id": security_id,
+                    },
+                )
+                .mappings()
+                .all()
+            )
+        out = [dict(r) for r in rows]
+        # Runtime guard: no row may be visible after as_of EOD.
+        as_of_ts = self._eod(as_of)
+        for row in out:
+            visible = row.get("visible_at")
+            if isinstance(visible, datetime) and visible > as_of_ts:
+                raise LookaheadError(
+                    f"search_chunks returned future visible_at={visible} as_of={as_of_ts}"
+                )
+        return out
+
+    def fetch_events_on_day(
+        self,
+        *,
+        as_of: date,
+        limit: int = 40,
+    ) -> list[dict[str, object]]:
+        """Events with ``visible_at`` on the Shanghai calendar day of ``as_of``.
+
+        Returns raw mapping rows (symbols as list). Raises on DB errors so
+        callers can soft-fail for optional report sections.
+        """
+        start = datetime.combine(as_of, time(0, 0), tzinfo=CN_TZ)
+        end = datetime.combine(as_of, time(23, 59, 59, 999999), tzinfo=CN_TZ)
+        stmt = text(
+            """
+            SELECT
+                e.event_id,
+                e.news_id,
+                e.event_type,
+                e.summary,
+                e.direction,
+                e.impact,
+                e.visible_at,
+                n.source AS news_source,
+                COALESCE(
+                    array_agg(DISTINCT s.symbol) FILTER (WHERE s.symbol IS NOT NULL),
+                    ARRAY[]::text[]
+                ) AS symbols
+            FROM event e
+            LEFT JOIN news n ON n.news_id = e.news_id
+            LEFT JOIN event_security es ON es.event_id = e.event_id
+            LEFT JOIN security s ON s.security_id = es.security_id
+            WHERE e.visible_at >= :start
+              AND e.visible_at <= :end
+            GROUP BY
+                e.event_id, e.news_id, e.event_type, e.summary,
+                e.direction, e.impact, e.visible_at, n.source
+            ORDER BY e.impact DESC NULLS LAST, e.event_id DESC
+            LIMIT :limit_fetch
+            """
+        )
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    stmt,
+                    {"start": start, "end": end, "limit_fetch": int(limit)},
+                )
+                .mappings()
+                .all()
+            )
+        return [dict(r) for r in rows]

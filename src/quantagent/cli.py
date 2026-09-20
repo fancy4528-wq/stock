@@ -295,6 +295,54 @@ def _run_extract_news(*, limit: int, load: bool) -> int:
     return 0
 
 
+def _run_ingest_chunks(
+    *,
+    limit: int,
+    since: date | None,
+    load: bool,
+) -> int:
+    from quantagent.data.loaders.chunk import ChunkLoader
+    from quantagent.knowledge.ingestion.documents import drafts_from_news_row
+
+    loader = ChunkLoader()
+    rows = loader.fetch_news_for_chunking(limit=limit, since=since)
+    if not rows:
+        print("ingest-chunks: no news rows in window")
+        return 0
+    drafts = []
+    for row in rows:
+        drafts.extend(drafts_from_news_row(row))
+    print(
+        f"ingest-chunks news_rows={len(rows)} drafts={len(drafts)} "
+        f"embedder={loader._embedder.model_name}"
+    )
+    if load:
+        stats = loader.load_drafts(drafts)
+        print(f"ingest-chunks loaded chunks={stats['chunks']}")
+    else:
+        print("ingest-chunks dry-run (pass --load to persist)")
+    return 0
+
+
+def _run_rag_smoke(
+    *,
+    query: str,
+    as_of: date,
+    top_k: int,
+) -> int:
+    from quantagent.knowledge.retrieval.search import search_chunks_as_of
+
+    hits = search_chunks_as_of(query, as_of=as_of, top_k=top_k)
+    print(f"rag-smoke as_of={as_of.isoformat()} query={query!r} hits={len(hits)}")
+    for h in hits:
+        preview = h.content.replace("\n", " ")[:120]
+        print(
+            f"  id={h.chunk_id} type={h.doc_type} dist={h.distance:.4f} "
+            f"ref={h.doc_ref} | {preview}"
+        )
+    return 0
+
+
 async def _ingest_calendar(
     *,
     start: date | None,
@@ -1087,6 +1135,36 @@ def main(argv: list[str] | None = None) -> int:
         help="Persist extractions into event / event_security",
     )
 
+    ingest_chunks = sub.add_parser(
+        "ingest-chunks",
+        help="P2 RAG: slice news/announcements → document_chunk (+ embed)",
+    )
+    ingest_chunks.add_argument("--limit", type=int, default=200)
+    ingest_chunks.add_argument(
+        "--since",
+        type=_parse_date,
+        default=None,
+        help="Only news with published_at >= this date (default: last 30d)",
+    )
+    ingest_chunks.add_argument(
+        "--load",
+        action="store_true",
+        help="Persist chunks into document_chunk",
+    )
+
+    rag_smoke = sub.add_parser(
+        "rag-smoke",
+        help="P2 RAG: embed query + search_chunks_as_of smoke print",
+    )
+    rag_smoke.add_argument("--query", required=True)
+    rag_smoke.add_argument(
+        "--as-of",
+        type=_parse_date,
+        default=None,
+        help="PIT as_of date (default: today)",
+    )
+    rag_smoke.add_argument("--top-k", type=int, default=5)
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -1144,6 +1222,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "extract-news":
         return _run_extract_news(limit=int(args.limit), load=bool(args.load))
+
+    if args.command == "ingest-chunks":
+        return _run_ingest_chunks(
+            limit=int(args.limit),
+            since=args.since,
+            load=bool(args.load),
+        )
+
+    if args.command == "rag-smoke":
+        as_of = args.as_of or date.today()
+        return _run_rag_smoke(
+            query=str(args.query),
+            as_of=as_of,
+            top_k=int(args.top_k),
+        )
 
     if args.command == "report":
         synthetic = not bool(args.live)

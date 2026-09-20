@@ -37,4 +37,6 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-13 | news.related_symbol | 公告代码未落库 → 事件标的全空 | migration `0006` + extract hint；URL 回填 `make relink-event-symbols` |
 | 2026-09-13 | security_industry | 重跑日报时申万归属表为空 | `make ingest-industry` 后 `rereport-with-events` |
 | 2026-09-13 | LLMClient / TokenBudget | P2 基建：OpenAI-compatible HTTP + ADR-0010 调用前预留；cost-log 增加 allocation | `config/llm.yaml`；`LLM_API_KEY` 空则 Null/$0；`make` 日报写 `docs/cost-log.md` |
+| 2026-09-20 | document_chunk + pgvector | P2 RAG 地基：`search_chunks_as_of`（visible_at + expires_at）；默认 HashEmbedder；可选 fastembed | migration `0007`；`make ingest-chunks` / `rag-smoke`；`EMBEDDING_BACKEND` |
+| 2026-09-20 | fastembed | `BAAI/bge-large-zh-v1.5` **不在** TextEmbedding 支持列表；中文 BGE 仅 `bge-small-zh`@512 | 默认改 `intfloat/multilingual-e5-large`@1024；可用 `EMBEDDING_MODEL` 覆盖 |
 

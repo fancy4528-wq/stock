@@ -27,6 +27,7 @@ FORBIDDEN_PREFIXES = (
     "reporting",
     "backtest",
     "scheduler",
+    "knowledge",
 )
 
 IMPORT_TEXT = re.compile(

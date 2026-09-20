@@ -522,13 +522,13 @@ Embedding 是少数可以完全本地化的环节，没有理由付费。首次�
 
 ### 8.1 P2 验收
 
-- [ ] `document_chunk` 有年报 MD&A 与风险因素切片
-- [ ] `search_chunks_as_of` 是唯一检索入口（有测试）
-- [ ] 检索强制 `visible_at <= as_of`（有测试）
-- [ ] 未来函数哨兵：注入未来文档，历史回测结果不变
-- [ ] `top_k` 默认 ≤ 5，工具返回值有截断
-- [ ] Embedding 本地跑通，API 成本为 0
-- [ ] 财务数字**不在** RAG 里（走结构化表）
+- [ ] `document_chunk` 有年报 MD&A 与风险因素切片 — 采集器下一轮；本轮有 `report_mda_drafts` 占位 + fixture 路径
+- [x] ✅ `search_chunks_as_of` 是唯一检索入口（有测试）— `PITRepository.search_chunks` + `knowledge.retrieval.search_chunks_as_of`
+- [x] ✅ 检索强制 `visible_at <= as_of`（有测试）
+- [x] ✅ 未来函数哨兵：注入未来文档，历史检索不可见（`LookaheadError` 守卫 + 双向 `expires_at` 过滤单测）
+- [x] ✅ `top_k` 默认 ≤ 5，工具返回值有截断（`MAX_CONTENT_CHARS=2000`）
+- [x] ✅ Embedding 本地可跑通（默认 `hash`；可选 `fastembed` / BGE，API 成本为 0）
+- [x] ✅ 财务数字**不在** RAG 里（走结构化表）；本轮入库源为 `news` 公告/快讯正文
 
 ### 8.2 P4 验收
 
