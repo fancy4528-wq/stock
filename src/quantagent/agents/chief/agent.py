@@ -176,7 +176,10 @@ class ChiefAgent:
                 "ev-chief-macro",
                 kind="quality",
                 ref_id=f"macro:{macro.regime}",
-                excerpt=f"regime={macro.regime} conf={macro.regime_confidence:.2f}",
+                excerpt=(
+                    f"regime={macro.regime} conf={macro.regime_confidence:.2f} "
+                    f"sectors={len(sectors)} stocks={len(stocks)}"
+                ),
                 as_of=ctx.as_of,
             ),
             *macro.evidence[:2],

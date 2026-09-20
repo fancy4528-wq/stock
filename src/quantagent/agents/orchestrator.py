@@ -9,7 +9,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import date
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -25,8 +25,10 @@ from quantagent.agents.sector.industry import IndustryAgent, ThemeAgent
 from quantagent.agents.stock.agent import StockAgent
 from quantagent.agents.tools.dispatch import ToolRegistry
 from quantagent.agents.tools.research_facts import ResearchFacts, StockSeed
+from quantagent.agents.trace import AgentTrace, bind_trace
+from quantagent.agents.validation import ValidationResult, validate_agent_output
 from quantagent.core.repository.pit import PITRepository
-from quantagent.shared.errors import BudgetDegrade, BudgetExceeded
+from quantagent.shared.errors import AgentError, BudgetDegrade, BudgetExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,9 @@ class OrchestratorResult(BaseModel):
     skipped_stocks: list[str] = []
     shortlist: Shortlist | None = None
     llm_cost_usd: float = 0.0
+    validations: list[ValidationResult] = []
+    validation_fatal_count: int = 0
+    untraceable_figure_count: int = 0
 
 
 class Orchestrator:
@@ -58,6 +63,7 @@ class Orchestrator:
         tools: ToolRegistry | None = None,
         llm: ResearchLlmBundle | None = None,
         stock_limit_on_degrade: int = 10,
+        validate_outputs: bool = True,
     ) -> None:
         self.max_concurrency = max_concurrency
         self.max_stocks = max_stocks
@@ -65,7 +71,11 @@ class Orchestrator:
         self.max_themes = max_themes
         self.tools = tools
         self.stock_limit_on_degrade = stock_limit_on_degrade
+        self.validate_outputs = validate_outputs
         self.degradations: list[DegradationNote] = []
+        self.validations: list[ValidationResult] = []
+        self._facts_context: dict[str, Any] | None = None
+        self._allowed_symbols: set[str] | None = None
         self.llm: ResearchLlmBundle | None
         self.budget: TokenBudget | None
         if llm is not None:
@@ -74,6 +84,7 @@ class Orchestrator:
         else:
             self.llm = None
             self.budget = budget
+
     async def run_daily(
         self,
         as_of: date,
@@ -91,6 +102,14 @@ class Orchestrator:
             if self.budget is not None
             else 1.0,
         )
+        self.validations = []
+        self._facts_context = facts.model_dump(mode="json")
+        self._allowed_symbols = {s.symbol for s in facts.stocks}
+        for ind in facts.industries:
+            self._allowed_symbols.update(c.symbol for c in ind.candidates)
+        for th in facts.themes:
+            self._allowed_symbols.update(c.symbol for c in th.candidates)
+
         result = OrchestratorResult(degradations=list(self.degradations))
 
         # Stage 4a — pure quant
@@ -155,6 +174,7 @@ class Orchestrator:
         if brief is None:
             result.aborted = True
             result.abort_reason = "ChiefAgent failed after retry"
+            self._attach_validation_stats(result)
             return result
         result.brief = brief
         if self.llm is not None:
@@ -163,7 +183,53 @@ class Orchestrator:
             )
             result.llm_cost_usd = self.llm.costs.total_usd
         result.degradations = list(self.degradations)
+        self._attach_validation_stats(result)
         return result
+
+    def _attach_validation_stats(self, result: OrchestratorResult) -> None:
+        result.validations = list(self.validations)
+        result.validation_fatal_count = sum(1 for v in self.validations if v.has_fatal)
+        result.untraceable_figure_count = sum(
+            v.untraceable_figure_count for v in self.validations
+        )
+
+    async def _await_validated(
+        self,
+        agent_name: str,
+        awaitable: Awaitable[T],
+        ctx: AgentContext,
+        *,
+        min_evidence: int = 1,
+    ) -> T:
+        """Await agent work under a bound trace, then run Gate 2 checks."""
+        if not self.validate_outputs:
+            return await awaitable
+
+        trace = AgentTrace(agent_name=agent_name)
+        if self._facts_context is not None:
+            trace.add_context("research_facts", self._facts_context)
+        with bind_trace(trace):
+            out = await awaitable
+        vr = validate_agent_output(
+            out,
+            ctx,
+            trace,
+            agent_name=agent_name,
+            allowed_symbols=self._allowed_symbols,
+            min_evidence=min_evidence,
+        )
+        self.validations.append(vr)
+        if vr.has_warn:
+            logger.warning(
+                "agent %s validation WARN: %s",
+                agent_name,
+                "; ".join(
+                    c.detail for c in vr.checks if not c.passed and c.level == "WARN"
+                ),
+            )
+        if vr.has_fatal:
+            raise AgentError(f"{agent_name} validation FATAL: {vr.fatal_details()}")
+        return out
 
     async def _run_macro_and_sectors(
         self,
@@ -179,12 +245,40 @@ class Orchestrator:
             ThemeAgent(s, tools=self.tools, llm=self.llm) for s in shortlist.theme_seeds
         ]
 
-        macro_task = self._run_with_retry(macro_agent.run, ctx, retries=1)
+        macro_task = self._run_with_retry(
+            lambda c: self._await_validated(
+                "macro", macro_agent.run(c), c, min_evidence=1
+            ),
+            ctx,
+            retries=1,
+        )
         sector_runs: list[tuple[str, Awaitable[SectorView]]] = []
         for ind in industry_agents:
-            sector_runs.append((ind._seed.code, ind.run(ctx)))  # noqa: SLF001
+            code = ind._seed.code  # noqa: SLF001
+            sector_runs.append(
+                (
+                    code,
+                    self._await_validated(
+                        f"industry:{code}",
+                        ind.run(ctx),
+                        ctx,
+                        min_evidence=2,
+                    ),
+                )
+            )
         for th in theme_agents:
-            sector_runs.append((th._seed.code, th.run(ctx)))  # noqa: SLF001
+            code = th._seed.code  # noqa: SLF001
+            sector_runs.append(
+                (
+                    code,
+                    self._await_validated(
+                        f"theme:{code}",
+                        th.run(ctx),
+                        ctx,
+                        min_evidence=2,
+                    ),
+                )
+            )
 
         gathered = await asyncio.gather(
             macro_task,
@@ -197,6 +291,14 @@ class Orchestrator:
         if isinstance(macro_result, BaseException):
             logger.warning("MacroAgent failed: %s", macro_result)
             macro = neutral_macro_view(ctx, reason=str(macro_result))
+            if self.validate_outputs:
+                trace = AgentTrace(agent_name="macro:degraded")
+                if self._facts_context is not None:
+                    trace.add_context("research_facts", self._facts_context)
+                vr = validate_agent_output(
+                    macro, ctx, trace, agent_name="macro:degraded", min_evidence=1
+                )
+                self.validations.append(vr)
             self.degradations.append(
                 DegradationNote(
                     allocation="daily_research",
@@ -236,12 +338,18 @@ class Orchestrator:
         views: list[StockView] = []
 
         async def _one(agent: StockAgent) -> StockView | None:
+            symbol = agent._seed.symbol  # noqa: SLF001
             async with sem:
                 try:
-                    return await agent.run(ctx)
+                    return await self._await_validated(
+                        f"stock:{symbol}",
+                        agent.run(ctx),
+                        ctx,
+                        min_evidence=3,
+                    )
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("StockAgent %s failed: %s", agent._seed.symbol, exc)  # noqa: SLF001
-                    skipped.append(agent._seed.symbol)  # noqa: SLF001
+                    logger.warning("StockAgent %s failed: %s", symbol, exc)
+                    skipped.append(symbol)
                     return None
 
         results = await asyncio.gather(*[_one(a) for a in agents])
@@ -253,7 +361,13 @@ class Orchestrator:
     async def _run_chief(self, ctx: AgentContext) -> MarketBrief | None:
         agent = ChiefAgent(llm=self.llm)
         try:
-            return await self._run_with_retry(agent.run, ctx, retries=1)
+            return await self._run_with_retry(
+                lambda c: self._await_validated(
+                    "chief", agent.run(c), c, min_evidence=1
+                ),
+                ctx,
+                retries=1,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error("ChiefAgent aborted: %s", exc)
             return None

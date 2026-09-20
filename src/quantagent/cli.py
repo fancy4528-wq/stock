@@ -420,6 +420,11 @@ def _run_research_smoke(*, as_of: date, max_stocks: int) -> int:
         print(f"  skipped_stocks={result.skipped_stocks}")
     if result.degradations:
         print(f"  degradations={[d.action for d in result.degradations]}")
+    print(
+        f"  validation agents={len(result.validations)} "
+        f"fatal={result.validation_fatal_count} "
+        f"untraceable={result.untraceable_figure_count}"
+    )
     for row in brief.sector_ranking[:5]:
         print(
             f"  sector#{row.rank} {row.sector_code} {row.sector_name} "
@@ -480,6 +485,11 @@ def _run_research_live(
         print(f"  skipped_stocks={result.skipped_stocks}")
     if result.degradations:
         print(f"  degradations={[d.action for d in result.degradations]}")
+    print(
+        f"  validation agents={len(result.validations)} "
+        f"fatal={result.validation_fatal_count} "
+        f"untraceable={result.untraceable_figure_count}"
+    )
     for row in brief.sector_ranking[:5]:
         print(
             f"  sector#{row.rank} {row.sector_code} {row.sector_name} "

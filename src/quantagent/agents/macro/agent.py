@@ -189,7 +189,7 @@ class MacroAgent:
                 "ev-macro-index",
                 kind="price",
                 ref_id=f"index:{facts.as_of.isoformat()}",
-                excerpt=f"index_return_1d={ret:+.4f} up={n_up} down={n_down}",
+                excerpt=f"index_return_1d={ret:+.4f} up={n_up} down={n_down} breadth={breadth}",
                 as_of=ctx.as_of,
             ),
             evidence(
