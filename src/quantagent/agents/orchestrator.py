@@ -23,6 +23,7 @@ from quantagent.agents.sector.industry import IndustryAgent, ThemeAgent
 from quantagent.agents.stock.agent import StockAgent
 from quantagent.agents.tools.dispatch import ToolRegistry
 from quantagent.agents.tools.research_facts import ResearchFacts, StockSeed
+from quantagent.core.repository.pit import PITRepository
 from quantagent.shared.errors import BudgetDegrade, BudgetExceeded
 
 logger = logging.getLogger(__name__)
@@ -156,8 +157,8 @@ class Orchestrator:
         shortlist: Shortlist,
     ) -> tuple[MacroView, list[SectorView], list[str]]:
         macro_agent = MacroAgent(facts, tools=self.tools)
-        industry_agents = [IndustryAgent(s) for s in shortlist.industry_seeds]
-        theme_agents = [ThemeAgent(s) for s in shortlist.theme_seeds]
+        industry_agents = [IndustryAgent(s, tools=self.tools) for s in shortlist.industry_seeds]
+        theme_agents = [ThemeAgent(s, tools=self.tools) for s in shortlist.theme_seeds]
 
         macro_task = self._run_with_retry(macro_agent.run, ctx, retries=1)
         sector_runs: list[tuple[str, Awaitable[SectorView]]] = []
@@ -308,6 +309,45 @@ async def run_research_smoke(
     tools: ToolRegistry | None = None,
     max_stocks: int = 10,
 ) -> OrchestratorResult:
-    """Convenience entry for CLI / tests."""
+    """Convenience entry for CLI / tests (fixture or pre-built facts)."""
     orch = Orchestrator(tools=tools, max_stocks=max_stocks)
     return await orch.run_daily(facts.as_of, facts.market, facts)
+
+
+async def run_research_live(
+    *,
+    as_of: date | None = None,
+    market: str = "CN",
+    universe: str = "mvp_cn_50",
+    max_stocks: int = 15,
+    max_industries: int = 5,
+    include_knowledge: bool = True,
+    tools: ToolRegistry | None = None,
+    repo: PITRepository | None = None,
+) -> tuple[OrchestratorResult, ResearchFacts]:
+    """Build live ``ResearchFacts`` from PIT, then run the research DAG."""
+    from quantagent.agents.tools import build_default_tool_registry
+    from quantagent.agents.tools.facts_builder import build_research_facts
+
+    pit = repo or PITRepository()
+    facts = build_research_facts(
+        as_of=as_of,
+        market=market,
+        universe=universe,
+        repo=pit,
+        max_industries=max(max_industries, 8),
+        max_stocks=max(max_stocks * 2, 20),
+    )
+    reg = tools or build_default_tool_registry(
+        include_knowledge=include_knowledge,
+        include_db=True,
+        repo=pit,
+    )
+    orch = Orchestrator(
+        tools=reg,
+        max_stocks=max_stocks,
+        max_industries=max_industries,
+        max_concurrency=4,
+    )
+    result = await orch.run_daily(facts.as_of, facts.market, facts)
+    return result, facts

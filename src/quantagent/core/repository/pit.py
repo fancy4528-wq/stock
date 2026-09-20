@@ -375,3 +375,322 @@ class PITRepository:
                 .all()
             )
         return [dict(r) for r in rows]
+
+    def get_financial_indicators(
+        self,
+        symbols: list[str],
+        *,
+        as_of: date,
+        periods: int = 8,
+    ) -> pl.DataFrame:
+        """PIT financial indicators (``announced_at <= as_of``, latest revision)."""
+        with self._engine.connect() as conn:
+            by_symbol = self._resolve_symbol_ids(conn, symbols)
+            sec_ids = [by_symbol[s] for s in symbols]
+            if not sec_ids:
+                return pl.DataFrame()
+            stmt = text(
+                """
+                WITH visible AS (
+                    SELECT DISTINCT ON (security_id, period_end) *
+                    FROM financial_indicator
+                    WHERE security_id = ANY(:ids)
+                      AND announced_at <= :as_of
+                    ORDER BY security_id, period_end, revision DESC
+                ),
+                ranked AS (
+                    SELECT
+                        visible.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY security_id
+                            ORDER BY period_end DESC
+                        ) AS rn
+                    FROM visible
+                )
+                SELECT
+                    security_id, period_end, revision, announced_at,
+                    roe, roa, gross_margin, net_margin, debt_to_asset,
+                    current_ratio, revenue_yoy, profit_yoy, ocf_to_profit,
+                    source, ingested_at
+                FROM ranked
+                WHERE rn <= :periods
+                """
+            ).bindparams(bindparam("ids", type_=ARRAY(BIGINT())))
+            rows = (
+                conn.execute(
+                    stmt,
+                    {
+                        "ids": sec_ids,
+                        "as_of": self._eod(as_of),
+                        "periods": int(periods),
+                    },
+                )
+                .mappings()
+                .all()
+            )
+        df = pl.DataFrame([dict(r) for r in rows]) if rows else pl.DataFrame()
+        if not df.is_empty():
+            id_to_symbol = {sid: sym for sym, sid in by_symbol.items()}
+            df = df.with_columns(
+                [
+                    pl.col("security_id")
+                    .replace_strict(id_to_symbol, return_dtype=pl.Utf8)
+                    .alias("symbol"),
+                    pl.lit(as_of).alias("_as_of"),
+                ]
+            )
+            assert_no_lookahead(df, self._eod(as_of), "announced_at")
+        return df
+
+    def get_valuation(
+        self,
+        symbols: list[str],
+        *,
+        as_of: date,
+        start: date,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        """Daily valuation panel with ``trade_date <= as_of``."""
+        end_date = end or as_of
+        if end_date > as_of:
+            end_date = as_of
+        with self._engine.connect() as conn:
+            by_symbol = self._resolve_symbol_ids(conn, symbols)
+            sec_ids = [by_symbol[s] for s in symbols]
+            if not sec_ids:
+                return pl.DataFrame()
+            stmt = text(
+                """
+                SELECT
+                    security_id, trade_date, market_cap, circ_market_cap,
+                    pe_ttm, pe_lyr, pb, ps_ttm, dividend_yield, source
+                FROM valuation_daily
+                WHERE security_id = ANY(:ids)
+                  AND trade_date >= :start
+                  AND trade_date <= :end
+                ORDER BY security_id, trade_date
+                """
+            ).bindparams(bindparam("ids", type_=ARRAY(BIGINT())))
+            rows = (
+                conn.execute(
+                    stmt,
+                    {"ids": sec_ids, "start": start, "end": end_date},
+                )
+                .mappings()
+                .all()
+            )
+        df = pl.DataFrame([dict(r) for r in rows]) if rows else pl.DataFrame()
+        if not df.is_empty():
+            id_to_symbol = {sid: sym for sym, sid in by_symbol.items()}
+            df = df.with_columns(
+                [
+                    pl.col("security_id")
+                    .replace_strict(id_to_symbol, return_dtype=pl.Utf8)
+                    .alias("symbol"),
+                    pl.lit(as_of).alias("_as_of"),
+                ]
+            )
+            assert_no_lookahead(df, as_of, "trade_date")
+        return df
+
+    def get_news(
+        self,
+        *,
+        as_of: date,
+        start: date,
+        limit: int = 20,
+        sources: list[str] | None = None,
+        related_symbol: str | None = None,
+    ) -> list[dict[str, object]]:
+        """News / announcements with ``published_at`` in ``[start, as_of]`` EOD."""
+        start_ts = datetime.combine(start, time(0, 0), tzinfo=CN_TZ)
+        end_ts = self._eod(as_of)
+        src = sources or []
+        stmt = text(
+            """
+            SELECT
+                news_id, source, source_id, url, title,
+                left(COALESCE(body, ''), 800) AS body_excerpt,
+                published_at, related_symbol, announce_type
+            FROM news
+            WHERE published_at >= :start_ts
+              AND published_at <= :end_ts
+              AND (cardinality(:sources) = 0 OR source = ANY(:sources))
+              AND (
+                    :related_symbol IS NULL
+                    OR related_symbol = :related_symbol
+                  )
+            ORDER BY published_at DESC, news_id DESC
+            LIMIT :limit_fetch
+            """
+        ).bindparams(bindparam("sources", type_=ARRAY(TEXT())))
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    stmt,
+                    {
+                        "start_ts": start_ts,
+                        "end_ts": end_ts,
+                        "sources": src,
+                        "related_symbol": related_symbol,
+                        "limit_fetch": int(limit),
+                    },
+                )
+                .mappings()
+                .all()
+            )
+        out = [dict(r) for r in rows]
+        for row in out:
+            pub = row.get("published_at")
+            if isinstance(pub, datetime) and pub > end_ts:
+                raise LookaheadError(
+                    f"get_news returned future published_at={pub} as_of={end_ts}"
+                )
+        return out
+
+    def get_events(
+        self,
+        *,
+        as_of: date,
+        start: date,
+        limit: int = 40,
+        symbol: str | None = None,
+        event_types: list[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """Structured events with ``visible_at`` in ``[start, as_of]`` EOD."""
+        start_ts = datetime.combine(start, time(0, 0), tzinfo=CN_TZ)
+        end_ts = self._eod(as_of)
+        types = event_types or []
+        stmt = text(
+            """
+            SELECT
+                e.event_id,
+                e.news_id,
+                e.event_type,
+                e.summary,
+                e.direction,
+                e.impact,
+                e.visible_at,
+                n.source AS news_source,
+                COALESCE(
+                    array_agg(DISTINCT s.symbol) FILTER (WHERE s.symbol IS NOT NULL),
+                    ARRAY[]::text[]
+                ) AS symbols
+            FROM event e
+            LEFT JOIN news n ON n.news_id = e.news_id
+            LEFT JOIN event_security es ON es.event_id = e.event_id
+            LEFT JOIN security s ON s.security_id = es.security_id
+            WHERE e.visible_at >= :start_ts
+              AND e.visible_at <= :end_ts
+              AND (cardinality(:event_types) = 0 OR e.event_type = ANY(:event_types))
+              AND (
+                    :symbol IS NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM event_security es2
+                        JOIN security s2 ON s2.security_id = es2.security_id
+                        WHERE es2.event_id = e.event_id
+                          AND s2.symbol = :symbol
+                    )
+                  )
+            GROUP BY
+                e.event_id, e.news_id, e.event_type, e.summary,
+                e.direction, e.impact, e.visible_at, n.source
+            ORDER BY e.impact DESC NULLS LAST, e.visible_at DESC, e.event_id DESC
+            LIMIT :limit_fetch
+            """
+        ).bindparams(bindparam("event_types", type_=ARRAY(TEXT())))
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    stmt,
+                    {
+                        "start_ts": start_ts,
+                        "end_ts": end_ts,
+                        "event_types": types,
+                        "symbol": symbol,
+                        "limit_fetch": int(limit),
+                    },
+                )
+                .mappings()
+                .all()
+            )
+        out = [dict(r) for r in rows]
+        for row in out:
+            visible = row.get("visible_at")
+            if isinstance(visible, datetime) and visible > end_ts:
+                raise LookaheadError(
+                    f"get_events returned future visible_at={visible} as_of={end_ts}"
+                )
+        return out
+
+    def get_industry_members(
+        self,
+        industry_code: str,
+        *,
+        as_of: date,
+        taxonomy: str = "sw_2021",
+        limit: int = 200,
+    ) -> pl.DataFrame:
+        """Securities in an industry as of ``as_of`` (PIT membership)."""
+        stmt = text(
+            """
+            SELECT
+                s.security_id,
+                s.symbol,
+                s.name,
+                i.code AS industry_code,
+                i.name AS industry_name,
+                i.level,
+                si.valid_from
+            FROM security_industry si
+            JOIN industry i ON i.industry_id = si.industry_id
+            JOIN industry_taxonomy t ON t.taxonomy_id = i.taxonomy_id
+            JOIN security s ON s.security_id = si.security_id
+            WHERE i.code = :industry_code
+              AND t.code = :taxonomy
+              AND si.valid_from <= :as_of
+              AND (si.valid_to IS NULL OR si.valid_to > :as_of)
+            ORDER BY s.symbol
+            LIMIT :limit_fetch
+            """
+        )
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    stmt,
+                    {
+                        "industry_code": industry_code,
+                        "taxonomy": taxonomy,
+                        "as_of": as_of,
+                        "limit_fetch": int(limit),
+                    },
+                )
+                .mappings()
+                .all()
+            )
+        df = pl.DataFrame([dict(r) for r in rows]) if rows else pl.DataFrame()
+        if not df.is_empty() and "valid_from" in df.columns:
+            assert_no_lookahead(df, as_of, "valid_from")
+        return df
+
+    def get_peers(
+        self,
+        symbol: str,
+        *,
+        as_of: date,
+        n: int = 10,
+        taxonomy: str = "sw_2021",
+    ) -> pl.DataFrame:
+        """Same-industry peers (excludes ``symbol``). Empty if industry unknown."""
+        ind = self.get_industry([symbol], as_of=as_of, taxonomy=taxonomy)
+        if ind.is_empty() or "industry_code" not in ind.columns:
+            return pl.DataFrame()
+        code = str(ind["industry_code"][0])
+        members = self.get_industry_members(
+            code, as_of=as_of, taxonomy=taxonomy, limit=max(n + 5, 20)
+        )
+        if members.is_empty():
+            return pl.DataFrame()
+        peers = members.filter(pl.col("symbol") != symbol).head(n)
+        return peers

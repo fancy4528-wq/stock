@@ -397,8 +397,8 @@ def _run_research_smoke(*, as_of: date, max_stocks: int) -> int:
     from quantagent.agents.tools import build_default_tool_registry
 
     facts = sample_research_facts(as_of)
-    # Offline smoke: registry without live RAG (avoids DB/embedder dependency).
-    tools = build_default_tool_registry(include_knowledge=False)
+    # Offline smoke: registry without live RAG/DB (avoids DB/embedder dependency).
+    tools = build_default_tool_registry(include_knowledge=False, include_db=False)
     orch = Orchestrator(tools=tools, max_stocks=max_stocks, max_concurrency=4)
 
     async def _go():
@@ -432,6 +432,61 @@ def _run_research_smoke(*, as_of: date, max_stocks: int) -> int:
         )
     if brief.inputs_summary.data_quality_note:
         print(f"  quality_note={brief.inputs_summary.data_quality_note}")
+    return 0
+
+
+def _run_research_live(
+    *,
+    as_of: date | None,
+    universe: str,
+    max_stocks: int,
+    max_industries: int,
+    no_knowledge: bool,
+) -> int:
+    import asyncio
+
+    from quantagent.agents.orchestrator import run_research_live
+
+    async def _go():
+        return await run_research_live(
+            as_of=as_of,
+            universe=universe,
+            max_stocks=max_stocks,
+            max_industries=max_industries,
+            include_knowledge=not no_knowledge,
+        )
+
+    result, facts = asyncio.run(_go())
+    print(
+        f"research-live facts as_of={facts.as_of.isoformat()} "
+        f"industries={len(facts.industries)} stocks={len(facts.stocks)} "
+        f"breadth={facts.n_up}:{facts.n_down} index_ret={facts.index_return_1d:+.4f}"
+    )
+    if result.aborted or result.brief is None:
+        print(f"research-live ABORTED: {result.abort_reason}")
+        return 1
+    brief = result.brief
+    print(
+        f"research-live brief regime={brief.regime} "
+        f"sectors={len(brief.sector_ranking)} stocks={len(brief.stock_ranking)} "
+        f"stance={brief.allocation_stance.equity_stance}"
+    )
+    if result.skipped_sectors:
+        print(f"  skipped_sectors={result.skipped_sectors}")
+    if result.skipped_stocks:
+        print(f"  skipped_stocks={result.skipped_stocks}")
+    if result.degradations:
+        print(f"  degradations={[d.action for d in result.degradations]}")
+    for row in brief.sector_ranking[:5]:
+        print(
+            f"  sector#{row.rank} {row.sector_code} {row.sector_name} "
+            f"score={row.score:.2f}"
+        )
+    for row in brief.stock_ranking[:5]:
+        print(
+            f"  stock#{row.rank} {row.symbol} {row.name} "
+            f"score={row.score:.2f} hint={row.action_hint}"
+        )
     return 0
 
 
@@ -1290,6 +1345,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     research_smoke.add_argument("--max-stocks", type=int, default=10)
 
+    research_live = sub.add_parser(
+        "research-live",
+        help="P2 research DAG on live PIT ResearchFacts + DB tools",
+    )
+    research_live.add_argument("--as-of", type=_parse_date, default=None)
+    research_live.add_argument("--universe", default="mvp_cn_50")
+    research_live.add_argument("--max-stocks", type=int, default=15)
+    research_live.add_argument("--max-industries", type=int, default=5)
+    research_live.add_argument(
+        "--no-knowledge",
+        action="store_true",
+        help="Skip search_knowledge (no embedder/DB chunk dependency)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -1373,6 +1442,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "research-smoke":
         as_of = args.as_of or date(2026, 9, 12)
         return _run_research_smoke(as_of=as_of, max_stocks=int(args.max_stocks))
+
+    if args.command == "research-live":
+        return _run_research_live(
+            as_of=args.as_of,
+            universe=str(args.universe),
+            max_stocks=int(args.max_stocks),
+            max_industries=int(args.max_industries),
+            no_knowledge=bool(args.no_knowledge),
+        )
 
     if args.command == "report":
         synthetic = not bool(args.live)
