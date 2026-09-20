@@ -1845,7 +1845,7 @@ P2/P2a 追加：
 - [ ] `manual_position.updated_at` 用于时效性检查
 - [ ] `trigger_cooldown` 支持手动静音（`muted_until`）
 - [ ] `document_chunk.expires_at` 存在，检索双向过滤
-- [ ] 年报 chunk 的 `visible_at` = 披露日（非报告期末）
+- [x] ✅ 年报 chunk 的 `visible_at` = 披露日（非报告期末）— `disclose_at` / `drafts_from_report_pack`；单测断言 period_end 不入 visible_at
 - [ ] `v_thesis_with_outcome` 视图可查（P4）
 - [ ] thesis chunk 的 `visible_at` = 结果确认时间（P4，有测试）
 

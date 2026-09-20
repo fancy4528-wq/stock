@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -10,12 +11,17 @@ from sqlalchemy import Connection, bindparam, create_engine, text
 from sqlalchemy.dialects.postgresql import ARRAY, TEXT
 from sqlalchemy.engine import Engine
 
+from quantagent.data.collectors.reports.pack import (
+    default_fixture_pack_path,
+    load_report_packs,
+)
 from quantagent.data.normalizers.symbol import normalize_symbol
 from quantagent.knowledge.embedding.base import Embedder
 from quantagent.knowledge.embedding.factory import build_embedder
 from quantagent.knowledge.ingestion.documents import (
     DocumentChunkDraft,
     drafts_from_news_row,
+    drafts_from_report_pack,
 )
 from quantagent.shared.config import get_settings
 
@@ -76,6 +82,25 @@ class ChunkLoader:
             drafts.extend(drafts_from_news_row(row))
         stats = self.load_drafts(drafts)
         return {"news_rows": len(rows), **stats}
+
+    def ingest_reports(
+        self,
+        *,
+        pack_path: Path | None = None,
+        load: bool = True,
+    ) -> dict[str, int]:
+        """Slice K2 report packs (MD&A + risk) → embed → ``document_chunk``."""
+        path = pack_path or default_fixture_pack_path()
+        packs = load_report_packs(path)
+        drafts: list[DocumentChunkDraft] = []
+        for pack in packs:
+            drafts.extend(drafts_from_report_pack(pack))
+        stats = {"packs": len(packs), "drafts": len(drafts), "chunks": 0, "skipped": 0}
+        if load and drafts:
+            loaded = self.load_drafts(drafts)
+            stats["chunks"] = loaded["chunks"]
+            stats["skipped"] = loaded["skipped"]
+        return stats
 
     def fetch_news_for_chunking(
         self,

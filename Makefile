@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks rag-smoke test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -78,8 +78,11 @@ rereport-with-events: ## P2：回填公告+抽取后，重写已有日报（含�
 ingest-chunks: ## P2 RAG：新闻/公告切片入库 document_chunk（默认 hash embed）
 	uv run python -m quantagent.cli ingest-chunks --limit 200 --load
 
-rag-smoke: ## P2 RAG：查询 smoke（需先 ingest-chunks + db migrate）
-	uv run python -m quantagent.cli rag-smoke --query "业绩预告 营收" --as-of $(TODAY) --top-k 5
+ingest-reports: ## P2 K2：年报/半年报 MD&A+风险因素切片入库（默认 fixture pack）
+	uv run python -m quantagent.cli ingest-reports --load --archive
+
+rag-smoke: ## P2 RAG：查询 smoke（需先 ingest-chunks/ingest-reports + db migrate）
+	uv run python -m quantagent.cli rag-smoke --query "管理层讨论 风险因素" --as-of $(TODAY) --top-k 5
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN

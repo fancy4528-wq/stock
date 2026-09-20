@@ -199,6 +199,19 @@ StockAgent 分析 600xxx 时应该能检索到：
 
 原则：**能结构化的不进 RAG。** 财务数字走 `financial_report` 表 + 工具，比向量检索准确得多。RAG 只处理"无法结构化的文本"。
 
+### 4.1a 入库路径（本仓库）
+
+年报全文多为 PDF，当前主路径是 **本地报告包**（人工/离线抽取的 MD&A 与风险因素正文），不是在线拉 PDF：
+
+| 步骤 | 命令 / 模块 |
+|---|---|
+| Pack 格式 | JSONL：`symbol`, `fiscal_year`, `disclose_date`, `mda_text`/`risk_text`/`full_text` |
+| Fixture | `tests/fixtures/reports/k2_packs.jsonl` |
+| 切片 | `drafts_from_report_pack` → `doc_type=report`，`doc_ref=report:{symbol}:{year}:{kind}:{mda\|risk}` |
+| 入库 | `make ingest-reports`（`--pack` 可指向自有 pack；`--archive` 写 `data/raw`） |
+
+`period_end` 仅作元数据；**禁止**用作 `visible_at`。
+
 ### 4.2 PIT 约束 —— 容易被忽略的未来函数
 
 `document_chunk.visible_at` 已在 [03-data-model](03-data-model.md) 定义，但各文档类型的 `visible_at` 语义需明确：
@@ -522,13 +535,13 @@ Embedding 是少数可以完全本地化的环节，没有理由付费。首次�
 
 ### 8.1 P2 验收
 
-- [ ] `document_chunk` 有年报 MD&A 与风险因素切片 — 采集器下一轮；本轮有 `report_mda_drafts` 占位 + fixture 路径
+- [x] ✅ `document_chunk` 有年报 MD&A 与风险因素切片 — `report_pack` JSONL + `make ingest-reports`；`visible_at`=披露日；节选按小节/条目切片
 - [x] ✅ `search_chunks_as_of` 是唯一检索入口（有测试）— `PITRepository.search_chunks` + `knowledge.retrieval.search_chunks_as_of`
 - [x] ✅ 检索强制 `visible_at <= as_of`（有测试）
 - [x] ✅ 未来函数哨兵：注入未来文档，历史检索不可见（`LookaheadError` 守卫 + 双向 `expires_at` 过滤单测）
 - [x] ✅ `top_k` 默认 ≤ 5，工具返回值有截断（`MAX_CONTENT_CHARS=2000`）
 - [x] ✅ Embedding 本地可跑通（默认 `hash`；可选 `fastembed` / BGE，API 成本为 0）
-- [x] ✅ 财务数字**不在** RAG 里（走结构化表）；本轮入库源为 `news` 公告/快讯正文
+- [x] ✅ 财务数字**不在** RAG 里（走结构化表）；新闻/公告 + 年报叙事文本（MD&A/风险）入库
 
 ### 8.2 P4 验收
 

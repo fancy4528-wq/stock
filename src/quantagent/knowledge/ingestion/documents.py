@@ -1,10 +1,19 @@
-"""K2 document slicing: news / announcements → chunk texts."""
+"""K2 document slicing: news / announcements / periodic reports → chunk texts."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
+from zoneinfo import ZoneInfo
+
+from quantagent.knowledge.ingestion.report_sections import (
+    extract_report_sections,
+    split_mda_subsections,
+    split_risk_items,
+)
+
+CN_TZ = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True)
@@ -94,27 +103,147 @@ def drafts_from_news_row(
     ]
 
 
+def disclose_at(disclose_date: date | datetime) -> datetime:
+    """PIT visibility for reports = disclose calendar day (Asia/Shanghai EOD start).
+
+    Uses midnight Asia/Shanghai on the disclose date — **never** the fiscal period end.
+    """
+    if isinstance(disclose_date, datetime):
+        if disclose_date.tzinfo is None:
+            return disclose_date.replace(tzinfo=CN_TZ)
+        return disclose_date
+    return datetime.combine(disclose_date, time(0, 0), tzinfo=CN_TZ)
+
+
+def report_doc_ref(
+    *,
+    symbol: str,
+    fiscal_year: int,
+    section: str,
+    report_kind: str = "annual",
+) -> str:
+    """Stable ``document_chunk.doc_ref`` for a report section."""
+    kind = report_kind.strip().lower() or "annual"
+    sec = section.strip().lower()
+    if sec not in {"mda", "risk"}:
+        raise ValueError(f"unsupported report section: {section!r}")
+    return f"report:{symbol}:{fiscal_year}:{kind}:{sec}"
+
+
 def report_mda_drafts(
     *,
     doc_ref: str,
     content: str,
     visible_at: datetime,
     security_id: int | None = None,
+    related_symbol: str | None = None,
     expires_at: datetime | None = None,
     max_chars: int = 800,
-    overlap: int = 80,
 ) -> list[DocumentChunkDraft]:
-    """Placeholder path for annual-report MD&A (collector comes later)."""
-    pieces = chunk_text(content, max_chars=max_chars, overlap=overlap)
+    """Slice MD&A text into ``doc_type=report`` drafts (~800 字 / 小节)."""
+    pieces = split_mda_subsections(content, max_chars=max_chars)
     return [
         DocumentChunkDraft(
             doc_type="report",
             doc_ref=doc_ref,
             chunk_index=i,
-            content=piece,
+            content=f"[MD&A] {piece}",
             visible_at=visible_at,
             expires_at=expires_at,
             security_id=security_id,
+            related_symbol=related_symbol,
         )
         for i, piece in enumerate(pieces)
     ]
+
+
+def report_risk_drafts(
+    *,
+    doc_ref: str,
+    content: str,
+    visible_at: datetime,
+    security_id: int | None = None,
+    related_symbol: str | None = None,
+    expires_at: datetime | None = None,
+    max_chars: int = 800,
+) -> list[DocumentChunkDraft]:
+    """Slice risk-factor text into ``doc_type=report`` drafts (按条目)."""
+    pieces = split_risk_items(content, max_chars=max_chars)
+    return [
+        DocumentChunkDraft(
+            doc_type="report",
+            doc_ref=doc_ref,
+            chunk_index=i,
+            content=f"[风险因素] {piece}",
+            visible_at=visible_at,
+            expires_at=expires_at,
+            security_id=security_id,
+            related_symbol=related_symbol,
+        )
+        for i, piece in enumerate(pieces)
+    ]
+
+
+def drafts_from_report_pack(
+    pack: dict[str, Any],
+    *,
+    max_chars: int = 800,
+) -> list[DocumentChunkDraft]:
+    """Build MD&A + risk drafts from one K2 report pack dict.
+
+    Required keys: ``symbol``, ``fiscal_year``, ``disclose_date``.
+    Provide ``mda_text`` / ``risk_text`` and/or ``full_text`` (section markers).
+    ``period_end`` is ignored for ``visible_at`` (anti-lookahead).
+    """
+    symbol = str(pack["symbol"]).strip()
+    fiscal_year = int(pack["fiscal_year"])
+    report_kind = str(pack.get("report_kind") or "annual").strip().lower()
+    raw_disclose = pack["disclose_date"]
+    if isinstance(raw_disclose, datetime):
+        visible = disclose_at(raw_disclose)
+    elif isinstance(raw_disclose, date):
+        visible = disclose_at(raw_disclose)
+    else:
+        visible = disclose_at(date.fromisoformat(str(raw_disclose)[:10]))
+
+    sections = extract_report_sections(
+        str(pack.get("full_text") or ""),
+        mda_text=str(pack["mda_text"]) if pack.get("mda_text") else None,
+        risk_text=str(pack["risk_text"]) if pack.get("risk_text") else None,
+    )
+    security_id = pack.get("security_id")
+    sid = int(security_id) if security_id is not None else None
+    drafts: list[DocumentChunkDraft] = []
+    if sections.mda:
+        drafts.extend(
+            report_mda_drafts(
+                doc_ref=report_doc_ref(
+                    symbol=symbol,
+                    fiscal_year=fiscal_year,
+                    section="mda",
+                    report_kind=report_kind,
+                ),
+                content=sections.mda,
+                visible_at=visible,
+                security_id=sid,
+                related_symbol=symbol,
+                max_chars=max_chars,
+            )
+        )
+    if sections.risk:
+        drafts.extend(
+            report_risk_drafts(
+                doc_ref=report_doc_ref(
+                    symbol=symbol,
+                    fiscal_year=fiscal_year,
+                    section="risk",
+                    report_kind=report_kind,
+                ),
+                content=sections.risk,
+                visible_at=visible,
+                security_id=sid,
+                related_symbol=symbol,
+                max_chars=max_chars,
+            )
+        )
+    return drafts
