@@ -32,6 +32,11 @@ dependencies = [
     "baostock>=0.9.3",
 ]
 
+[project.optional-dependencies]
+embedding = [
+    "fastembed",
+]
+
 [dependency-groups]
 dev = [
     "pytest",
@@ -66,7 +71,7 @@ plugins = ["pydantic.mypy"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["akshare.*", "akshare", "baostock.*", "baostock"]
+module = ["akshare.*", "akshare", "baostock.*", "baostock", "fastembed.*", "fastembed"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

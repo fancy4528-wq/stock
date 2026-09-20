@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     llm_base_url: str | None = Field(default=None, alias="LLM_BASE_URL")
     llm_default_tier: str = Field(default="medium", alias="LLM_DEFAULT_TIER")
 
+    # RAG embedding (P2). hash = deterministic CI default; fastembed = local model.
+    embedding_backend: str = Field(default="hash", alias="EMBEDDING_BACKEND")
+    # Used when EMBEDDING_BACKEND=fastembed. Must be fastembed-supported and dim=1024.
+    # Default multilingual-e5-large (Chinese OK). Note: no bge-large-zh in fastembed.
+    embedding_model: str = Field(
+        default="intfloat/multilingual-e5-large",
+        alias="EMBEDDING_MODEL",
+    )
     @computed_field  # type: ignore[prop-decorator]
     @property
     def database_url(self) -> str:

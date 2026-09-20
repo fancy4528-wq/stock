@@ -18,3 +18,9 @@ Append-only notes from ReporterAgent / later Agents
 | 2026-09-13T05:14:55.315786+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
 | 2026-09-13T05:25:19.556067+00:00 | 20260904-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
 | 2026-09-13T05:25:21.810047+00:00 | 20260904-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-14T14:40:31.715573+00:00 | 20260914-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-14T14:46:07.104581+00:00 | 20260914-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-15T10:15:58.380617+00:00 | 20260915-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-16T10:18:42.081783+00:00 | 20260916-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-17T10:18:36.067385+00:00 | 20260917-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |
+| 2026-09-18T10:18:45.328317+00:00 | 20260918-cn-daily | reporter | daily_research | deterministic | deterministic | 0 | 0 | 0.0000 |

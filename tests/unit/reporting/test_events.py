@@ -12,8 +12,8 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 
 
 def test_load_events_for_as_of_maps_rows() -> None:
-    conn = MagicMock()
-    conn.execute.return_value.mappings.return_value.all.return_value = [
+    repo = MagicMock()
+    repo.fetch_events_on_day.return_value = [
         {
             "event_id": 9,
             "news_id": 3,
@@ -26,13 +26,10 @@ def test_load_events_for_as_of_maps_rows() -> None:
             "symbols": ["600519.SH"],
         }
     ]
-    engine = MagicMock()
-    engine.connect.return_value.__enter__.return_value = conn
-    engine.connect.return_value.__exit__.return_value = None
 
     rows = load_events_for_as_of(
         date(2026, 9, 11),
-        engine=engine,
+        repo=repo,
         universe_symbols=["600519.SH"],
         limit=5,
     )
@@ -40,9 +37,10 @@ def test_load_events_for_as_of_maps_rows() -> None:
     assert rows[0].event_id == 9
     assert rows[0].symbols == ["600519.SH"]
     assert rows[0].event_type == "contract"
+    repo.fetch_events_on_day.assert_called_once()
 
 
 def test_load_events_soft_fails() -> None:
-    engine = MagicMock()
-    engine.connect.side_effect = RuntimeError("db down")
-    assert load_events_for_as_of(date(2026, 9, 11), engine=engine) == []
+    repo = MagicMock()
+    repo.fetch_events_on_day.side_effect = RuntimeError("db down")
+    assert load_events_for_as_of(date(2026, 9, 11), repo=repo) == []
