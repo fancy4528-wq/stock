@@ -962,8 +962,14 @@ Agent 输出好不好，不能靠读起来顺不顺。需要量化评估，详�
 | Macro / Industry / Theme / Stock / Chief（启发式骨架） | ✅ | `agents/{macro,sector,stock,chief}/` |
 | `Orchestrator`（并发、跳过失败、宏观中性降级） | ✅ | `agents/orchestrator.py` |
 | Prompt v1 占位 | ✅ | `prompts/{macro,industry,theme,stock,chief}/v1.md` |
-| 真实宏观/财务/资金流工具 | ⏳ 后续接 DB | — |
+| 真实 DB 工具（价格/财务/估值/新闻/事件/行业/广度） | ✅ | `agents/tools/research_db.py` + `PITRepository` 扩展 |
+| 宏观 / 北向 / 资金流工具 | ⏳ stub（`available=False`，表未迁移） | 同文件 `get_macro_series` 等 |
+| 从 PIT 组装 `ResearchFacts` + Agent 调 DB 工具 | ✅ | `facts_builder.py`；Macro/Industry/Stock 软调用工具 |
 | LLM 路径（`complete_with_budget`）挂到研究 Agent | ⏳ 后续 | — |
 | `shadow_agent` 组合 | ⏳ Gate 2 | — |
 
 离线自检：`make research-smoke`（fixture，不连库）。
+实盘自检：`make research-live`（需行情/universe/行业已入库；默认 `--no-knowledge`）。
+
+研究 Agent 默认 registry：`build_default_tool_registry(include_db=True)`；离线测试传 `include_db=False`。
+PIT 硬规则不变：工具 schema 无 `as_of`，由 `ToolRegistry` 注入。

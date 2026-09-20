@@ -1,8 +1,8 @@
-"""IndustryAgent / ThemeAgent — SectorView producers (deterministic skeleton)."""
+"""IndustryAgent / ThemeAgent — SectorView producers (+ optional DB tools)."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from quantagent.agents._heuristic import evidence, point, risk, score_from_return
 from quantagent.agents.base import AgentContext
@@ -12,23 +12,48 @@ from quantagent.agents.schemas.views import (
     StockCandidate,
     ThemeLifecycle,
 )
+from quantagent.agents.tools.dispatch import ToolRegistry
 from quantagent.agents.tools.research_facts import SectorSeed
 from quantagent.agents.validation import require_evidence, validate_model
 from quantagent.shared.errors import AgentError
 
 
-def _sector_dimensions(seed: SectorSeed, score: float) -> SectorDimensions:
+def _tool_call(
+    tools: ToolRegistry | None,
+    name: str,
+    args: dict[str, Any],
+    ctx: AgentContext,
+) -> Any | None:
+    if tools is None or name not in tools.names():
+        return None
+    try:
+        return tools.call(name, args, ctx)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _sector_dimensions(
+    seed: SectorSeed,
+    score: float,
+    *,
+    news_n: int,
+) -> SectorDimensions:
     from quantagent.agents._heuristic import dim
 
     mom = score_from_return(seed.ret_20d)
-    day = score_from_return(seed.ret_1d)
+    day_score = score_from_return(seed.ret_1d)
+    news_score = 0.55 if news_n else day_score
     return SectorDimensions(
-        fundamental=dim(0.5, "骨架：基本面待接财务汇总工具"),
-        valuation=dim(0.5, "骨架：估值待接估值分位工具"),
+        fundamental=dim(0.5, "基本面汇总工具未接（待板块财务）"),
+        valuation=dim(0.5, "板块估值分位工具未接"),
         momentum=dim(mom, f"ret_20d={seed.ret_20d:+.2%}", ["ev-sector-ret"]),
-        flow=dim(0.5, "骨架：资金流待接"),
-        news_sentiment=dim(day, f"ret_1d={seed.ret_1d:+.2%}", ["ev-sector-ret"]),
-        macro_fit=dim(score, "与粗筛动量对齐的占位分", ["ev-sector-ret"]),
+        flow=dim(0.5, "资金流表未迁移"),
+        news_sentiment=dim(
+            news_score,
+            f"ret_1d={seed.ret_1d:+.2%}；近端事件 {news_n} 条",
+            ["ev-sector-ret"] if not news_n else ["ev-sector-news"],
+        ),
+        macro_fit=dim(score, "与粗筛动量对齐", ["ev-sector-ret"]),
     )
 
 
@@ -39,9 +64,34 @@ def _build_sector_view(
     sector_type: Literal["industry", "theme"],
     horizon: Literal["1w", "1m", "3m", "6m"],
     lifecycle: ThemeLifecycle | None = None,
+    tools: ToolRegistry | None = None,
 ) -> SectorView:
     score = score_from_return(0.6 * seed.ret_20d + 0.4 * seed.ret_1d)
     conf = 0.45 if abs(seed.ret_20d) < 0.02 else 0.6
+
+    news_n = 0
+    proxy_note = ""
+    if sector_type == "industry":
+        news_payload = _tool_call(
+            tools,
+            "get_sector_news",
+            {"sector_code": seed.code, "lookback_days": 14, "limit": 10},
+            ctx,
+        )
+        if isinstance(news_payload, dict) and news_payload.get("available"):
+            news_n = len(news_payload.get("rows") or [])
+        prices_payload = _tool_call(
+            tools,
+            "get_sector_prices",
+            {"sector_code": seed.code, "lookback_days": 40},
+            ctx,
+        )
+        if isinstance(prices_payload, dict) and prices_payload.get("available"):
+            n_names = int(prices_payload.get("n_names") or 0)
+            proxy_note = f"；等权成分代理 n={n_names}"
+            if n_names:
+                conf = min(0.75, conf + 0.05)
+
     ev = [
         evidence(
             "ev-sector-ret",
@@ -54,10 +104,21 @@ def _build_sector_view(
             "ev-sector-meta",
             kind="quality",
             ref_id=f"sector-meta:{seed.code}:{ctx.run_id}",
-            excerpt=f"type={sector_type} name={seed.name}",
+            excerpt=f"type={sector_type} name={seed.name}{proxy_note}",
             as_of=ctx.as_of,
         ),
     ]
+    if news_n:
+        ev.append(
+            evidence(
+                "ev-sector-news",
+                kind="news",
+                ref_id=f"sector-news:{seed.code}",
+                excerpt=f"related events={news_n}",
+                as_of=ctx.as_of,
+            )
+        )
+
     candidates = [
         StockCandidate(
             symbol=c.symbol,
@@ -74,10 +135,20 @@ def _build_sector_view(
         ["ev-sector-ret"],
     )
     bear = point(
-        f"{seed.name} 存在动量回撤与政策/估值不确定性（骨架占位）",
+        f"{seed.name} 存在动量回撤与政策/估值不确定性",
         "moderate",
         ["ev-sector-meta"],
     )
+    thesis = (
+        f"数据显示 {seed.name}（{seed.code}）近端收益 "
+        f"{seed.ret_1d:+.2%}，20 日 {seed.ret_20d:+.2%}"
+        f"{proxy_note}。"
+    )
+    if news_n:
+        thesis += f"近端关联事件 {news_n} 条。"
+    else:
+        thesis += "新闻面偏静或未检索到关联事件。"
+
     view = SectorView(
         as_of=ctx.as_of,
         sector_type=sector_type,
@@ -86,15 +157,11 @@ def _build_sector_view(
         score=score,
         confidence=conf,
         horizon=horizon,
-        thesis=(
-            f"数据显示 {seed.name}（{seed.code}）近端收益 "
-            f"{seed.ret_1d:+.2%}，20 日 {seed.ret_20d:+.2%}。"
-            "骨架阶段论点仅基于粗筛动量，待接财务与新闻工具。"
-        )[:800],
-        dimensions=_sector_dimensions(seed, score),
+        thesis=thesis[:800],
+        dimensions=_sector_dimensions(seed, score, news_n=news_n),
         bull_points=[bull],
         bear_points=[bear],
-        key_uncertainties=["骨架未接基本面与资金流，置信度受限"],
+        key_uncertainties=["板块财务汇总与资金流尚未完整接入"],
         candidates=candidates,
         risks=[risk(f"{seed.name} 短期波动与流动性风险")],
         theme_lifecycle=lifecycle,
@@ -108,8 +175,15 @@ class IndustryAgent:
     name = "industry"
     tier = "medium"
 
-    def __init__(self, seed: SectorSeed, *, force_fail: bool = False) -> None:
+    def __init__(
+        self,
+        seed: SectorSeed,
+        *,
+        tools: ToolRegistry | None = None,
+        force_fail: bool = False,
+    ) -> None:
         self._seed = seed
+        self._tools = tools
         self._force_fail = force_fail
 
     async def run(self, ctx: AgentContext) -> SectorView:
@@ -120,6 +194,7 @@ class IndustryAgent:
             seed=self._seed,
             sector_type="industry",
             horizon="3m",
+            tools=self._tools,
         )
 
 
@@ -127,14 +202,20 @@ class ThemeAgent:
     name = "theme"
     tier = "medium"
 
-    def __init__(self, seed: SectorSeed, *, force_fail: bool = False) -> None:
+    def __init__(
+        self,
+        seed: SectorSeed,
+        *,
+        tools: ToolRegistry | None = None,
+        force_fail: bool = False,
+    ) -> None:
         self._seed = seed
+        self._tools = tools
         self._force_fail = force_fail
 
     async def run(self, ctx: AgentContext) -> SectorView:
         if self._force_fail:
             raise AgentError(f"theme agent forced failure: {self._seed.code}")
-        # Skeleton lifecycle: strong short-term momentum → acceleration, else emerging.
         stage: Literal["emerging", "acceleration", "peak", "declining", "dormant"]
         if self._seed.ret_1d >= 0.03 and self._seed.ret_20d >= 0.05:
             stage = "acceleration"
@@ -156,4 +237,5 @@ class ThemeAgent:
             sector_type="theme",
             horizon="1m",
             lifecycle=lifecycle,
+            tools=self._tools,
         )
