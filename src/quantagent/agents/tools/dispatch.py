@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 
 from quantagent.agents.base import AgentContext
+from quantagent.agents.trace import get_active_trace
 from quantagent.shared.errors import AgentError
 
 
@@ -19,6 +20,9 @@ class ToolRegistry:
 
     On dispatch, ``as_of`` is always taken from ``AgentContext`` and any
     agent-supplied ``as_of`` is rejected (PIT hard rule).
+
+    When an ``AgentTrace`` is bound via ``bind_trace``, each call is recorded
+    for Gate 2 ``check_figures_traceable``.
     """
 
     def __init__(self) -> None:
@@ -41,14 +45,24 @@ class ToolRegistry:
             )
         payload = dict(args)
         payload["as_of"] = ctx.as_of
+        trace = get_active_trace()
         try:
-            return self._tools[name](**payload)
+            result = self._tools[name](**payload)
         except TypeError as exc:
+            if trace is not None:
+                trace.record_tool(name, payload, error=str(exc))
             raise ToolError(f"tool {name!r} bad args: {exc}") from exc
-        except ToolError:
+        except ToolError as exc:
+            if trace is not None:
+                trace.record_tool(name, payload, error=str(exc))
             raise
         except Exception as exc:  # noqa: BLE001 — surface as ToolError to agent
+            if trace is not None:
+                trace.record_tool(name, payload, error=str(exc))
             raise ToolError(f"tool {name!r} failed: {exc}") from exc
+        if trace is not None:
+            trace.record_tool(name, payload, result=result)
+        return result
 
 
 def require_as_of(as_of: date | None) -> date:

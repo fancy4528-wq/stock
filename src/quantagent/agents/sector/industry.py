@@ -105,7 +105,7 @@ def _build_sector_view(
             "ev-sector-meta",
             kind="quality",
             ref_id=f"sector-meta:{seed.code}:{ctx.run_id}",
-            excerpt=f"type={sector_type} name={seed.name}{proxy_note}",
+            excerpt=f"type={sector_type} name={seed.name} events={news_n}{proxy_note}",
             as_of=ctx.as_of,
         ),
     ]
