@@ -1,4 +1,4 @@
-"""MacroAgent — market regime view (heuristic + optional DB tools)."""
+"""MacroAgent — market regime view (heuristic + optional DB tools + LLM)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from quantagent.agents._heuristic import evidence
 from quantagent.agents.base import AgentContext
+from quantagent.agents.llm.structured import ResearchLlmBundle, complete_research_model
 from quantagent.agents.schemas.views import (
     DimensionView,
     MacroView,
@@ -32,7 +33,7 @@ def _tool_call(
 
 
 class MacroAgent:
-    """MacroAgent: regime from ResearchFacts, enriched by DB tools when present."""
+    """MacroAgent: regime from ResearchFacts, enriched by DB tools / LLM when present."""
 
     name = "macro"
     tier = "medium"
@@ -42,15 +43,55 @@ class MacroAgent:
         facts: ResearchFacts,
         *,
         tools: ToolRegistry | None = None,
+        llm: ResearchLlmBundle | None = None,
         force_fail: bool = False,
     ) -> None:
         self._facts = facts
         self._tools = tools
+        self._llm = llm
         self._force_fail = force_fail
 
     async def run(self, ctx: AgentContext) -> MacroView:
         if self._force_fail:
             raise AgentError("macro agent forced failure")
+        heuristic = self._build_heuristic(ctx)
+        if self._llm is None or not self._llm.enabled():
+            return heuristic
+
+        payload = {
+            "scaffold": heuristic.model_dump(mode="json"),
+            "facts": {
+                "index_return_1d": self._facts.index_return_1d,
+                "n_up": self._facts.n_up,
+                "n_down": self._facts.n_down,
+                "macro_note": self._facts.macro_note,
+            },
+        }
+        inject = {
+            "as_of": ctx.as_of.isoformat(),
+            "evidence": [e.model_dump(mode="json") for e in heuristic.evidence],
+        }
+        refined = await complete_research_model(
+            self._llm,
+            agent=self.name,
+            tier=self.tier,
+            prompt_name="macro",
+            user_payload=payload,
+            run_id=ctx.run_id,
+            model_cls=MacroView,
+            inject=inject,
+            repair_hint="retry",
+            user_prefix=(
+                "在 scaffold MacroView 基础上 refinement（regime / drivers / dimension notes）；"
+                "保留 evidence_refs 指向已有 evidence；不要编造数字；仅输出 JSON：\n"
+            ),
+        )
+        if refined is None:
+            return heuristic
+        require_evidence(refined.evidence, min_count=1)
+        return validate_model(refined)  # type: ignore[return-value]
+
+    def _build_heuristic(self, ctx: AgentContext) -> MacroView:
         facts = self._facts
         ret = facts.index_return_1d
         n_up, n_down = facts.n_up, facts.n_down

@@ -87,7 +87,7 @@ rag-smoke: ## P2 RAG：查询 smoke（需先 ingest-chunks/ingest-reports + db m
 research-smoke: ## P2 多 Agent 骨架：Orchestrator → MarketBrief（fixture，不连库）
 	uv run python -m quantagent.cli research-smoke --max-stocks 10
 
-research-live: ## P2 研究 DAG：PIT ResearchFacts + DB 工具（需库内行情/行业）
+research-live: ## P2 研究 DAG：PIT + DB 工具；有 LLM_API_KEY 则走 complete_with_budget
 	uv run python -m quantagent.cli research-live --max-stocks 10 --max-industries 5 --no-knowledge
 
 features:       ## 列出 MVP 因子

@@ -965,11 +965,13 @@ Agent 输出好不好，不能靠读起来顺不顺。需要量化评估，详�
 | 真实 DB 工具（价格/财务/估值/新闻/事件/行业/广度） | ✅ | `agents/tools/research_db.py` + `PITRepository` 扩展 |
 | 宏观 / 北向 / 资金流工具 | ⏳ stub（`available=False`，表未迁移） | 同文件 `get_macro_series` 等 |
 | 从 PIT 组装 `ResearchFacts` + Agent 调 DB 工具 | ✅ | `facts_builder.py`；Macro/Industry/Stock 软调用工具 |
-| LLM 路径（`complete_with_budget`）挂到研究 Agent | ⏳ 后续 | — |
+| LLM 路径（`complete_with_budget`）挂到研究 Agent | ✅ | `agents/llm/structured.py`；启发式 scaffold + 预算降级 |
 | `shadow_agent` 组合 | ⏳ Gate 2 | — |
 
-离线自检：`make research-smoke`（fixture，不连库）。
+离线自检：`make research-smoke`（fixture，不连库，启发式）。
 实盘自检：`make research-live`（需行情/universe/行业已入库；默认 `--no-knowledge`）。
+设 `LLM_API_KEY` 后 `research-live` 走真实 LLM（ADR-0010 `daily_research` 池）；加 `--no-llm` 强制启发式。
+费用写入 `docs/cost-log.md`（allocation 列）。
 
 研究 Agent 默认 registry：`build_default_tool_registry(include_db=True)`；离线测试传 `include_db=False`。
 PIT 硬规则不变：工具 schema 无 `as_of`，由 `ToolRegistry` 注入。

@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from quantagent.agents.base import AgentContext
 from quantagent.agents.chief.agent import ChiefAgent
 from quantagent.agents.llm.budget import DegradationNote, TokenBudget
+from quantagent.agents.llm.metering import CostTracker
+from quantagent.agents.llm.structured import ResearchLlmBundle
 from quantagent.agents.macro.agent import MacroAgent, neutral_macro_view
 from quantagent.agents.schemas.views import MacroView, MarketBrief, SectorView, StockView
 from quantagent.agents.screener import Shortlist, screen_shortlist
@@ -39,6 +41,7 @@ class OrchestratorResult(BaseModel):
     skipped_sectors: list[str] = []
     skipped_stocks: list[str] = []
     shortlist: Shortlist | None = None
+    llm_cost_usd: float = 0.0
 
 
 class Orchestrator:
@@ -53,17 +56,24 @@ class Orchestrator:
         max_themes: int = 3,
         budget: TokenBudget | None = None,
         tools: ToolRegistry | None = None,
+        llm: ResearchLlmBundle | None = None,
         stock_limit_on_degrade: int = 10,
     ) -> None:
         self.max_concurrency = max_concurrency
         self.max_stocks = max_stocks
         self.max_industries = max_industries
         self.max_themes = max_themes
-        self.budget = budget
         self.tools = tools
         self.stock_limit_on_degrade = stock_limit_on_degrade
         self.degradations: list[DegradationNote] = []
-
+        self.llm: ResearchLlmBundle | None
+        self.budget: TokenBudget | None
+        if llm is not None:
+            self.llm = llm
+            self.budget = llm.budget
+        else:
+            self.llm = None
+            self.budget = budget
     async def run_daily(
         self,
         as_of: date,
@@ -147,6 +157,11 @@ class Orchestrator:
             result.abort_reason = "ChiefAgent failed after retry"
             return result
         result.brief = brief
+        if self.llm is not None:
+            self.degradations.extend(
+                d for d in self.llm.degradations if d not in self.degradations
+            )
+            result.llm_cost_usd = self.llm.costs.total_usd
         result.degradations = list(self.degradations)
         return result
 
@@ -156,9 +171,13 @@ class Orchestrator:
         facts: ResearchFacts,
         shortlist: Shortlist,
     ) -> tuple[MacroView, list[SectorView], list[str]]:
-        macro_agent = MacroAgent(facts, tools=self.tools)
-        industry_agents = [IndustryAgent(s, tools=self.tools) for s in shortlist.industry_seeds]
-        theme_agents = [ThemeAgent(s, tools=self.tools) for s in shortlist.theme_seeds]
+        macro_agent = MacroAgent(facts, tools=self.tools, llm=self.llm)
+        industry_agents = [
+            IndustryAgent(s, tools=self.tools, llm=self.llm) for s in shortlist.industry_seeds
+        ]
+        theme_agents = [
+            ThemeAgent(s, tools=self.tools, llm=self.llm) for s in shortlist.theme_seeds
+        ]
 
         macro_task = self._run_with_retry(macro_agent.run, ctx, retries=1)
         sector_runs: list[tuple[str, Awaitable[SectorView]]] = []
@@ -204,7 +223,7 @@ class Orchestrator:
         seeds: list[StockSeed],
         ctx: AgentContext,
     ) -> tuple[list[StockView], list[str]]:
-        agents = [StockAgent(s, tools=self.tools) for s in seeds]
+        agents = [StockAgent(s, tools=self.tools, llm=self.llm) for s in seeds]
         return await self._run_bounded(agents, ctx)
 
     async def _run_bounded(
@@ -232,7 +251,7 @@ class Orchestrator:
         return views, skipped
 
     async def _run_chief(self, ctx: AgentContext) -> MarketBrief | None:
-        agent = ChiefAgent()
+        agent = ChiefAgent(llm=self.llm)
         try:
             return await self._run_with_retry(agent.run, ctx, retries=1)
         except Exception as exc:  # noqa: BLE001
@@ -308,9 +327,10 @@ async def run_research_smoke(
     *,
     tools: ToolRegistry | None = None,
     max_stocks: int = 10,
+    llm: ResearchLlmBundle | None = None,
 ) -> OrchestratorResult:
     """Convenience entry for CLI / tests (fixture or pre-built facts)."""
-    orch = Orchestrator(tools=tools, max_stocks=max_stocks)
+    orch = Orchestrator(tools=tools, max_stocks=max_stocks, llm=llm)
     return await orch.run_daily(facts.as_of, facts.market, facts)
 
 
@@ -322,10 +342,13 @@ async def run_research_live(
     max_stocks: int = 15,
     max_industries: int = 5,
     include_knowledge: bool = True,
+    use_llm: bool = True,
     tools: ToolRegistry | None = None,
     repo: PITRepository | None = None,
+    llm: ResearchLlmBundle | None = None,
 ) -> tuple[OrchestratorResult, ResearchFacts]:
     """Build live ``ResearchFacts`` from PIT, then run the research DAG."""
+    from quantagent.agents.llm.factory import build_llm_client, build_token_budget
     from quantagent.agents.tools import build_default_tool_registry
     from quantagent.agents.tools.facts_builder import build_research_facts
 
@@ -343,11 +366,27 @@ async def run_research_live(
         include_db=True,
         repo=pit,
     )
+    bundle = llm
+    if bundle is None and use_llm:
+        client = build_llm_client()
+        budget = build_token_budget(day=facts.as_of)
+        bundle = ResearchLlmBundle(
+            llm=client,
+            budget=budget,
+            costs=CostTracker(),
+            allocation="daily_research",
+        )
     orch = Orchestrator(
         tools=reg,
         max_stocks=max_stocks,
         max_industries=max_industries,
         max_concurrency=4,
+        llm=bundle,
+        budget=bundle.budget if bundle is not None else None,
     )
     result = await orch.run_daily(facts.as_of, facts.market, facts)
+    if bundle is not None and bundle.costs.records:
+        from pathlib import Path
+
+        bundle.costs.append_cost_log(Path("docs/cost-log.md"))
     return result, facts

@@ -42,4 +42,5 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-20 | K2 report_pack | 年报/半年报 MD&A+风险因素：本地 JSONL pack（全文 PDF OCR 后接）；`visible_at`=disclose_date | `make ingest-reports`；fixture `tests/fixtures/reports/k2_packs.jsonl` |
 | 2026-09-20 | research DB tools | Agent 工具：价格/财务/估值/新闻/事件/行业/广度经 PIT；宏观/北向/资金流 stub | `agents/tools/research_db.py`；`build_default_tool_registry(include_db=True)` |
 | 2026-09-20 | research-live | PIT 组装 ResearchFacts；Macro/Industry/Stock 调 DB 工具；fixture smoke 仍离线 | `make research-live`；`facts_builder.py` |
+| 2026-09-20 | research LLM path | Macro/Sector/Stock/Chief：`complete_with_budget` + scaffold refinement；预算/解析失败回退启发式；cost-log | `agents/llm/structured.py`；`LLM_API_KEY` / `--no-llm` |
 

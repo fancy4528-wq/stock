@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from quantagent.agents._heuristic import dim, evidence, point, risk, score_from_return
 from quantagent.agents.base import AgentContext
+from quantagent.agents.llm.structured import ResearchLlmBundle, complete_research_model
 from quantagent.agents.schemas.views import (
     FinancialHealth,
     StockDimensions,
@@ -135,15 +136,49 @@ class StockAgent:
         seed: StockSeed,
         *,
         tools: ToolRegistry | None = None,
+        llm: ResearchLlmBundle | None = None,
         force_fail: bool = False,
     ) -> None:
         self._seed = seed
         self._tools = tools
+        self._llm = llm
         self._force_fail = force_fail
 
     async def run(self, ctx: AgentContext) -> StockView:
         if self._force_fail:
             raise AgentError(f"stock agent forced failure: {self._seed.symbol}")
+        heuristic = self._build_heuristic(ctx)
+        if self._llm is None or not self._llm.enabled():
+            return heuristic
+
+        inject = {
+            "as_of": ctx.as_of.isoformat(),
+            "symbol": heuristic.symbol,
+            "name": heuristic.name,
+            "evidence": [e.model_dump(mode="json") for e in heuristic.evidence],
+            "financial_health": heuristic.financial_health.model_dump(mode="json"),
+        }
+        refined = await complete_research_model(
+            self._llm,
+            agent=self.name,
+            tier=self.tier,
+            prompt_name="stock",
+            user_payload={"scaffold": heuristic.model_dump(mode="json")},
+            run_id=ctx.run_id,
+            model_cls=StockView,
+            inject=inject,
+            repair_hint="retry",
+            user_prefix=(
+                "在 scaffold StockView 基础上 refinement（thesis / bull/bear / risks）；"
+                "保留 evidence_refs；财务数字必须来自 scaffold；仅输出 JSON：\n"
+            ),
+        )
+        if refined is None:
+            return heuristic
+        require_evidence(refined.evidence, min_count=3)
+        return validate_model(refined)  # type: ignore[return-value]
+
+    def _build_heuristic(self, ctx: AgentContext) -> StockView:
         seed = self._seed
         score = score_from_return(seed.ret_20d, center=seed.preliminary_score)
         conf = min(0.7, 0.4 + abs(seed.ret_20d) * 2.0)
