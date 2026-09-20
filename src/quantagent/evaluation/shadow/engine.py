@@ -1,4 +1,4 @@
-"""Shadow Portfolio engine: equal-weight baseline + factor Top-N via SimulatedBroker."""
+"""Shadow Portfolio engine: baseline + factor Top-N + agent Top-N via SimulatedBroker."""
 
 from __future__ import annotations
 
@@ -40,7 +40,12 @@ class ShadowPortfolioState:
 
 
 class ShadowEngine:
-    """Runs ``shadow_baseline`` and ``shadow_factor``; append-only daily records."""
+    """Runs ``shadow_baseline``, ``shadow_factor``, and ``shadow_agent``.
+
+    Daily records are append-only. Step is **per-portfolio** idempotent for the
+    same ``as_of`` so newly added portfolios (e.g. ``shadow_agent``) can catch up
+    without duplicating existing journal rows.
+    """
 
     def __init__(
         self,
@@ -68,6 +73,12 @@ class ShadowEngine:
                 cfg=self.cfg,
                 market=self.market,
                 journal=AppendOnlyJournal(root / "shadow_factor.jsonl"),
+            ),
+            "shadow_agent": ShadowPortfolioState(
+                "shadow_agent",
+                cfg=self.cfg,
+                market=self.market,
+                journal=AppendOnlyJournal(root / "shadow_agent.jsonl"),
             ),
         }
 
@@ -105,95 +116,124 @@ class ShadowEngine:
         bars: list[PriceBar],
         baseline_symbols: list[str],
         factor_scores: dict[str, float],
+        agent_scores: dict[str, float] | None = None,
     ) -> list[ShadowDayRecord]:
-        """Rebalance both shadows for one day and append journal rows.
+        """Rebalance shadows for one day and append journal rows.
 
-        Idempotent for the same ``as_of``: if every portfolio journal already has
-        that date, return the existing rows without re-trading (safe re-runs).
+        Per-portfolio idempotent: portfolios that already have ``as_of`` return
+        the cached row (with ``idempotent_skip``) without re-trading.
         """
-        cached = self._cached_day(as_of)
-        if cached is not None:
-            return cached
-
-        records: list[ShadowDayRecord] = []
-        # Factor Top-N
-        ranked = sorted(factor_scores.items(), key=lambda x: x[1], reverse=True)
-        factor_syms = [s for s, _ in ranked[: self.cfg.factor_top_n]]
+        agent_scores = agent_scores or {}
+        ranked_factor = sorted(factor_scores.items(), key=lambda x: x[1], reverse=True)
+        factor_syms = [s for s, _ in ranked_factor[: self.cfg.factor_top_n]]
+        ranked_agent = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
+        agent_syms = [s for s, _ in ranked_agent[: self.cfg.agent_top_n]]
 
         targets: dict[ShadowPortfolioId, list[str]] = {
             "shadow_baseline": baseline_symbols[: self.cfg.baseline_n],
             "shadow_factor": factor_syms,
+            "shadow_agent": agent_syms,
+        }
+        extra_notes: dict[ShadowPortfolioId, list[str]] = {
+            "shadow_baseline": [],
+            "shadow_factor": [],
+            "shadow_agent": (["no_agent_scores"] if not agent_syms else []),
         }
 
+        records: list[ShadowDayRecord] = []
         for pid, symbols in targets.items():
-            st = self._states[pid]
-            st.broker.set_bars(bars, trade_date=as_of)
-            st.broker.roll_day()
-            # Mark before rebalance to get start-of-day equity for sizing
-            equity_before = st.broker.mark_to_market()
-            await self._rebalance(st, symbols=symbols, as_of=as_of, run_id=run_id)
-            nav = st.broker.mark_to_market()
-            ret_1d = (nav / st.prev_nav - 1.0) if st.prev_nav > 0 else 0.0
-            ret_cum = nav / st.initial_nav - 1.0
-            st.peak_nav = max(st.peak_nav, nav)
-            dd = nav / st.peak_nav - 1.0 if st.peak_nav > 0 else 0.0
-            st.max_drawdown = min(st.max_drawdown, dd)
-            st.prev_nav = nav
-
-            positions = await st.broker.get_positions()
-            weights = {p.symbol: (p.market_value / nav if nav > 0 else 0.0) for p in positions}
-            day_unfilled = [
-                {
-                    "symbol": u.symbol,
-                    "side": u.side,
-                    "quantity": u.quantity,
-                    "reason": u.reason,
-                }
-                for u in st.broker.unfilled
-                if u.trade_date == as_of
-            ]
-            notes: list[str] = []
-            if equity_before <= 0:
-                notes.append("zero_equity")
-            acct = await st.broker.get_account()
-            rec = ShadowDayRecord(
-                portfolio=pid,
+            st = self._states.get(pid)
+            if st is None:
+                continue
+            cached = self._cached_portfolio_day(st, as_of)
+            if cached is not None:
+                records.append(cached)
+                continue
+            notes = list(extra_notes.get(pid, []))
+            rec = await self._step_one(
+                st,
                 as_of=as_of,
                 run_id=run_id,
-                strategy_version=self.cfg.strategy_version,
-                code_version=self.code_version,
-                nav=nav,
-                cash=acct.cash,
-                ret_1d=ret_1d,
-                ret_cum=ret_cum,
-                max_drawdown=st.max_drawdown,
-                n_positions=len(positions),
-                weights=weights,
-                unfilled=day_unfilled,
+                bars=bars,
+                symbols=symbols,
                 notes=notes,
             )
-            st.journal.append(rec)
-            if self._db_store is not None:
-                self._db_store.append(rec)
             records.append(rec)
         return records
 
-    def _cached_day(self, as_of: date) -> list[ShadowDayRecord] | None:
-        """Return prior journal rows when every portfolio already stepped ``as_of``."""
-        rows: list[ShadowDayRecord] = []
-        for pid, st in self._states.items():
-            if not st.journal.has_as_of(as_of):
-                return None
-            raw = st.journal.latest_for_as_of(as_of)
-            if raw is None:
-                return None
-            raw = {
-                **raw,
-                "portfolio": pid,
-                "notes": list(raw.get("notes") or []) + ["idempotent_skip"],
+    def _cached_portfolio_day(
+        self, st: ShadowPortfolioState, as_of: date
+    ) -> ShadowDayRecord | None:
+        if not st.journal.has_as_of(as_of):
+            return None
+        raw = st.journal.latest_for_as_of(as_of)
+        if raw is None:
+            return None
+        raw = {
+            **raw,
+            "portfolio": st.portfolio_id,
+            "notes": list(raw.get("notes") or []) + ["idempotent_skip"],
+        }
+        return ShadowDayRecord.model_validate(raw)
+
+    async def _step_one(
+        self,
+        st: ShadowPortfolioState,
+        *,
+        as_of: date,
+        run_id: str,
+        bars: list[PriceBar],
+        symbols: list[str],
+        notes: list[str],
+    ) -> ShadowDayRecord:
+        st.broker.set_bars(bars, trade_date=as_of)
+        st.broker.roll_day()
+        equity_before = st.broker.mark_to_market()
+        await self._rebalance(st, symbols=symbols, as_of=as_of, run_id=run_id)
+        nav = st.broker.mark_to_market()
+        ret_1d = (nav / st.prev_nav - 1.0) if st.prev_nav > 0 else 0.0
+        ret_cum = nav / st.initial_nav - 1.0
+        st.peak_nav = max(st.peak_nav, nav)
+        dd = nav / st.peak_nav - 1.0 if st.peak_nav > 0 else 0.0
+        st.max_drawdown = min(st.max_drawdown, dd)
+        st.prev_nav = nav
+
+        positions = await st.broker.get_positions()
+        weights = {p.symbol: (p.market_value / nav if nav > 0 else 0.0) for p in positions}
+        day_unfilled = [
+            {
+                "symbol": u.symbol,
+                "side": u.side,
+                "quantity": u.quantity,
+                "reason": u.reason,
             }
-            rows.append(ShadowDayRecord.model_validate(raw))
-        return rows
+            for u in st.broker.unfilled
+            if u.trade_date == as_of
+        ]
+        day_notes = list(notes)
+        if equity_before <= 0:
+            day_notes.append("zero_equity")
+        acct = await st.broker.get_account()
+        rec = ShadowDayRecord(
+            portfolio=st.portfolio_id,
+            as_of=as_of,
+            run_id=run_id,
+            strategy_version=self.cfg.strategy_version,
+            code_version=self.code_version,
+            nav=nav,
+            cash=acct.cash,
+            ret_1d=ret_1d,
+            ret_cum=ret_cum,
+            max_drawdown=st.max_drawdown,
+            n_positions=len(positions),
+            weights=weights,
+            unfilled=day_unfilled,
+            notes=day_notes,
+        )
+        st.journal.append(rec)
+        if self._db_store is not None:
+            self._db_store.append(rec)
+        return rec
 
     async def _rebalance(
         self,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,12 +23,14 @@ from quantagent.agents.tools.market import (
     ShadowStatusRow,
 )
 from quantagent.core.repository.pit import PITRepository
-from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine
+from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine, scores_from_brief
 from quantagent.evaluation.shadow.stats import summarize_unfilled
 from quantagent.evaluation.shadow.types import ShadowDayRecord
 from quantagent.execution.broker.simulated import PriceBar
 from quantagent.reporting.daily import write_daily_report
 from quantagent.reporting.live import finalize_live_bundle, load_live_report_data
+
+logger = logging.getLogger(__name__)
 
 
 def make_run_id(as_of: date, market: str = "CN") -> str:
@@ -177,6 +180,49 @@ def _shadow_rows_from_recs(shadow_recs: list[ShadowDayRecord]) -> list[ShadowSta
     ]
 
 
+def _synthetic_agent_scores(symbols: list[str]) -> dict[str, float]:
+    """Deterministic Agent-like ranking distinct from mom_20d factor order."""
+    # Reverse-ish: mid-cap first so Top-N ≠ factor Top-N.
+    n = len(symbols)
+    return {sym: float((i * 7 + 3) % max(n, 1)) / max(n, 1) for i, sym in enumerate(symbols)}
+
+
+async def _live_agent_scores(
+    *,
+    as_of: date,
+    market: str,
+    universe_code: str,
+    repo: PITRepository,
+    run_research: bool,
+) -> tuple[dict[str, float], list[str]]:
+    """Soft-run research DAG (heuristic, no RAG) for shadow_agent scores."""
+    if not run_research:
+        return {}, ["shadow_agent: research skipped"]
+    try:
+        from quantagent.agents.orchestrator import run_research_live
+
+        result, _facts = await run_research_live(
+            as_of=as_of,
+            market=market,
+            universe=universe_code,
+            max_stocks=15,
+            max_industries=5,
+            include_knowledge=False,
+            use_llm=False,
+            repo=repo,
+        )
+        scores = scores_from_brief(result.brief)
+        notes: list[str] = []
+        if result.aborted:
+            notes.append(f"shadow_agent: research aborted ({result.abort_reason})")
+        if not scores:
+            notes.append("shadow_agent: empty stock_ranking")
+        return scores, notes
+    except Exception as exc:  # noqa: BLE001 — soft-fail into degraded notes
+        logger.warning("shadow_agent research failed: %s", exc)
+        return {}, [f"shadow_agent: research failed ({type(exc).__name__}: {exc})"]
+
+
 async def run_daily_pipeline(
     *,
     as_of: date | None = None,
@@ -189,11 +235,15 @@ async def run_daily_pipeline(
     repo: PITRepository | None = None,
     run_id: str | None = None,
     degraded: list[str] | None = None,
+    run_research: bool = True,
 ) -> Path:
     """Shadow step -> ReporterAgent -> markdown (synthetic or live PIT).
 
     LLM: ``build_llm_client()`` uses NullLLMClient unless ``LLM_API_KEY`` is set.
     Budget: ADR-0010 ``daily_research`` pool via ``TokenBudget`` (pre-call reserve).
+
+    Live path soft-runs the research DAG (heuristic, ``use_llm=False``) to feed
+    ``shadow_agent`` Top-N; failures become degraded notes, not hard stops.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -212,9 +262,10 @@ async def run_daily_pipeline(
         symbols = synthetic_universe(50)
         bars = build_synthetic_bars(symbols, as_of)
         scores = {sym: 1.0 - i * 0.01 for i, sym in enumerate(symbols)}
+        agent_scores = _synthetic_agent_scores(symbols)
         engine = ShadowEngine(
             shadow_dir,
-            cfg=ShadowConfig(baseline_n=50, factor_top_n=15),
+            cfg=ShadowConfig(baseline_n=50, factor_top_n=15, agent_top_n=15),
             code_version="dev",
         )
         engine.load_history_metrics()
@@ -224,6 +275,7 @@ async def run_daily_pipeline(
             bars=bars,
             baseline_symbols=symbols,
             factor_scores=scores,
+            agent_scores=agent_scores,
         )
         reject_stats = _reject_stats(shadow_recs)
         bundle = build_synthetic_bundle(
@@ -256,13 +308,22 @@ async def run_daily_pipeline(
                 update={"as_of": as_of, "run_id": run_id}
             ),
         )
+        agent_scores, agent_notes = await _live_agent_scores(
+            as_of=as_of,
+            market=market,
+            universe_code=universe_code,
+            repo=pit,
+            run_research=run_research,
+        )
         n = len(live.symbols)
         n_scored = len(live.factor_scores)
+        n_agent = len(agent_scores)
         engine = ShadowEngine(
             shadow_dir,
             cfg=ShadowConfig(
                 baseline_n=max(n, 1),
                 factor_top_n=min(15, max(n_scored, 1)),
+                agent_top_n=min(15, max(n_agent, 1)) if n_agent else 15,
             ),
             code_version="dev",
         )
@@ -273,12 +334,14 @@ async def run_daily_pipeline(
             bars=live.bars,
             baseline_symbols=live.symbols,
             factor_scores=live.factor_scores,
+            agent_scores=agent_scores,
         )
         reject_stats = _reject_stats(shadow_recs)
+        risk = _shadow_notes(shadow_recs) + [RiskNote(text=n) for n in agent_notes]
         bundle = finalize_live_bundle(
             live,
             shadow_rows=_shadow_rows_from_recs(shadow_recs),
-            risk_notes=_shadow_notes(shadow_recs),
+            risk_notes=risk,
         ).model_copy(update={"reject_stats": reject_stats})
         ctx = AgentContext(as_of=as_of, market=market, run_id=run_id, code_version="dev")
 
