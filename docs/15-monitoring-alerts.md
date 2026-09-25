@@ -1021,6 +1021,19 @@ config/notify/
 
 **注意 Gate 2b 要求推送有用率高于 P2a。** 如果加了 LLM 反而没提升，说明 LLM 层没有产生价值，应该回退到纯规则监控（省钱）。
 
+## 11a. 实现进度（骨架）
+
+| 项 | 状态 | 入口 |
+|---|---|---|
+| YAML 持仓书 + CLI add/remove/show | ✅ | `positions/`；`make positions-check` |
+| 时效性检查（交易日优先，日历兜底） | ✅ | `positions/staleness.py` |
+| `exit_policy` + 边界校验 | ✅ | `config/user/exit_policy_cn.yaml` |
+| A 类价格触发（止损/止盈/涨跌停/停牌/放量/MA60/回撤） | ✅ | `monitor/triggers/price.py`；`make monitor-once` |
+| 盘中快照 Collector / 抑制 / Telegram | ✅ | `data/collectors/akshare/spot.py`；`monitor/suppression.py`；`notify/telegram.py` |
+| B 类风控触发 | ✅ | `monitor/triggers/risk.py`；`make monitor-once` |
+| DB `manual_position` / `alert` 迁移 | ⏳ | YAML + JSON 先行 |
+| C 类公告触发 / 主循环常驻 | ⏳ | — |
+
 ## 12. 与既有原则的一致性
 
 监控功能不破坏任何既有原则：

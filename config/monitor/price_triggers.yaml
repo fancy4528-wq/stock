@@ -1,0 +1,53 @@
+# A-class price triggers (P2a). Pure rules — zero LLM.
+# Thresholds for stop/take-profit come from config/user/exit_policy_*.yaml.
+
+triggers:
+  - code: "PX_STOP_LOSS"
+    severity: "critical"
+    message: "{name} 浮亏达 {holding_return:.1%}，触及止损线 {threshold:.0%}"
+    cooldown_hours: 24
+
+  - code: "PX_TRAILING_STOP"
+    severity: "critical"
+    message: "{name} 自持仓高点回撤 {drawdown_from_entry_high:.1%}，触及移动止损 {trail_pct:.0%}"
+    cooldown_hours: 24
+
+  - code: "PX_TAKE_PROFIT"
+    severity: "high"
+    message: "{name} 浮盈 {holding_return:.1%}，达到止盈档位（建议减 {reduce:.0%}）"
+    cooldown_hours: 24
+
+  - code: "PX_TARGET_PRICE"
+    severity: "high"
+    message: "{name} 触及目标价 {target_price}"
+    cooldown_hours: 24
+
+  - code: "PX_LIMIT_UP"
+    severity: "medium"
+    message: "{name} 涨停。若计划卖出，注意封板可能打开"
+    cooldown_hours: 4
+
+  - code: "PX_LIMIT_DOWN"
+    severity: "critical"
+    message: "{name} 跌停，当前无法卖出"
+    cooldown_hours: 4
+
+  - code: "PX_SUSPENDED"
+    severity: "critical"
+    message: "{name} 停牌"
+    cooldown_hours: 24
+
+  - code: "PX_BREAK_MA60"
+    severity: "medium"
+    message: "{name} 跌破 60 日线"
+    cooldown_hours: 72
+
+  - code: "PX_VOL_SPIKE"
+    severity: "high"
+    message: "{name} 放量异动，成交量为 5 日均量 {volume_ratio_5d:.1f} 倍"
+    cooldown_hours: 6
+
+  - code: "PX_DRAWDOWN_FROM_HIGH"
+    severity: "high"
+    message: "{name} 自建仓后高点回撤 {drawdown_from_entry_high:.1%}"
+    cooldown_hours: 24

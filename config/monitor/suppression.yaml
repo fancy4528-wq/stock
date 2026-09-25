@@ -1,0 +1,10 @@
+# P2a suppression policy — prevent alert fatigue.
+
+max_alerts_per_day: 10
+max_critical_per_day: 5
+max_alerts_per_symbol_per_day: 3
+critical_bypasses_quiet: true
+default_cooldown_hours: 24
+
+quiet_hours:
+  - { start: "22:00", end: "08:00" }
