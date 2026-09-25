@@ -115,9 +115,7 @@ def filter_hits(
     suppressed: list[tuple[TriggerHit, str]] = []
 
     today_fires = [
-        f
-        for f in state.fires
-        if _day_key(datetime.fromisoformat(str(f["fired_at"]))) == today
+        f for f in state.fires if _day_key(datetime.fromisoformat(str(f["fired_at"]))) == today
     ]
     n_today = len(today_fires)
     n_crit = sum(1 for f in today_fires if f.get("severity") == "critical")

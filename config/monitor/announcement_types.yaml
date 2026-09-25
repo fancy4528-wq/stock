@@ -1,0 +1,45 @@
+# C-class announcement triggers (P2a). Pure rules — zero LLM.
+# Match if keyword appears in announce_type OR title (longer keys preferred).
+
+critical:
+  - "立案调查"
+  - "退市风险警示"
+  - "退市整理"
+  - "停牌"
+  - "重大资产重组"
+  - "业绩预告-预亏"
+  - "业绩预告-下修"
+  - "预亏"
+  - "下修"
+  - "控股股东变更"
+  - "违规担保"
+  - "债务违约"
+  - "审计意见-非标"
+  - "无法表示意见"
+  - "否定意见"
+  - "保留意见"
+
+high:
+  - "业绩预告-预增"
+  - "业绩预告-预盈"
+  - "预增"
+  - "重大合同"
+  - "增发"
+  - "回购"
+  - "股权激励"
+  - "股东减持"
+  - "股东增持"
+  - "减持"
+  - "增持"
+  - "分红"
+
+# Only sources / rows that look like filings (not CLS flash) unless type matched.
+prefer_sources:
+  - "em_announce"
+
+cooldown_hours:
+  critical: 24
+  high: 12
+
+message_critical: "{name} 公告：{announce_type} — {title_short}"
+message_high: "{name} 公告：{announce_type} — {title_short}"

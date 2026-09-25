@@ -591,33 +591,17 @@ def _run_positions(
     return 0
 
 
-def _run_monitor_once(
-    *,
-    positions_path: Path,
-    market: str,
-    demo: bool,
-    live_spot: bool,
-    no_notify: bool,
-) -> int:
-    """P2a: quotes → price+risk triggers → suppress → notify."""
-    import asyncio
+def _print_monitor_result(result: object, *, positions_path: Path, label: str) -> None:
+    from quantagent.monitor.engine import MonitorOnceResult
 
-    from quantagent.monitor.engine import run_monitor_once
-
-    result = asyncio.run(
-        run_monitor_once(
-            positions_path=positions_path,
-            market=market,
-            demo=demo and not live_spot,
-            notify=not no_notify,
-        )
-    )
+    assert isinstance(result, MonitorOnceResult)
     if result.stale_note:
         print(f"WARN {result.stale_note}")
     for n in result.notes:
         print(f"note: {n}")
     print(
-        f"monitor-once positions={positions_path} quotes={len(result.quotes)} "
+        f"{label} positions={positions_path} quotes={len(result.quotes)} "
+        f"price={result.ran_price} risk={result.ran_risk} ann={result.ran_announcements} "
         f"raw={len(result.hits_raw)} sent={len(result.hits_sent)} "
         f"suppressed={len(result.suppressed)}"
     )
@@ -630,6 +614,71 @@ def _run_monitor_once(
         print(f"  deliver/{d.channel} {status}: {d.detail}")
     if not result.hits_raw:
         print("  (no triggers fired)")
+
+
+def _run_monitor_once(
+    *,
+    positions_path: Path,
+    market: str,
+    demo: bool,
+    live_spot: bool,
+    no_notify: bool,
+    skip_announcements: bool,
+) -> int:
+    """P2a: quotes + announcements → triggers → suppress → notify."""
+    import asyncio
+
+    from quantagent.monitor.engine import run_monitor_once
+
+    result = asyncio.run(
+        run_monitor_once(
+            positions_path=positions_path,
+            market=market,
+            demo=demo and not live_spot,
+            notify=not no_notify,
+            run_announcements=not skip_announcements,
+        )
+    )
+    _print_monitor_result(result, positions_path=positions_path, label="monitor-once")
+    return 0
+
+
+def _run_monitor_loop(
+    *,
+    positions_path: Path,
+    market: str,
+    demo: bool,
+    live_spot: bool,
+    no_notify: bool,
+    interval_seconds: float | None,
+    max_cycles: int | None,
+    ignore_sessions: bool,
+) -> int:
+    """P2a resident loop (~3 min ticks per schedule.yaml)."""
+    import asyncio
+
+    from quantagent.monitor.engine import run_monitor_loop
+
+    def _on_cycle(n: int, result: object) -> None:
+        print(f"--- cycle {n} ---")
+        _print_monitor_result(result, positions_path=positions_path, label="monitor")
+
+    loop_result = asyncio.run(
+        run_monitor_loop(
+            positions_path=positions_path,
+            market=market,
+            demo=demo and not live_spot,
+            notify=not no_notify,
+            max_cycles=max_cycles,
+            interval_seconds=interval_seconds,
+            respect_sessions=not ignore_sessions,
+            on_cycle=_on_cycle,
+        )
+    )
+    print(
+        f"monitor-loop stopped reason={loop_result.stopped_reason} "
+        f"cycles={loop_result.cycles}"
+    )
     return 0
 
 
@@ -1535,7 +1584,7 @@ def main(argv: list[str] | None = None) -> int:
 
     monitor_once = sub.add_parser(
         "monitor-once",
-        help="P2a: price+risk triggers → suppress → notify (demo or live spot)",
+        help="P2a: price+risk+announcement triggers → suppress → notify",
     )
     monitor_once.add_argument(
         "--positions",
@@ -1546,7 +1595,7 @@ def main(argv: list[str] | None = None) -> int:
     monitor_once.add_argument(
         "--demo",
         action="store_true",
-        help="Synthetic quotes (default if --live-spot not set)",
+        help="Synthetic quotes + sample announcement (default if --live-spot not set)",
     )
     monitor_once.add_argument(
         "--live-spot",
@@ -1557,6 +1606,50 @@ def main(argv: list[str] | None = None) -> int:
         "--no-notify",
         action="store_true",
         help="Skip notifier (still records suppression state if hits allowed)",
+    )
+    monitor_once.add_argument(
+        "--skip-announcements",
+        action="store_true",
+        help="Skip C-class announcement triggers",
+    )
+
+    monitor_loop = sub.add_parser(
+        "monitor-loop",
+        help="P2a resident monitor (~3 min); Ctrl+C to stop",
+    )
+    monitor_loop.add_argument(
+        "--positions",
+        type=Path,
+        default=Path("data/positions/example_cn.yaml"),
+    )
+    monitor_loop.add_argument("--market", default="CN")
+    monitor_loop.add_argument(
+        "--demo",
+        action="store_true",
+        help="Synthetic quotes + sample announcement",
+    )
+    monitor_loop.add_argument(
+        "--live-spot",
+        action="store_true",
+        help="Live spot quotes (and DB announcements)",
+    )
+    monitor_loop.add_argument("--no-notify", action="store_true")
+    monitor_loop.add_argument(
+        "--interval",
+        type=float,
+        default=None,
+        help="Override sleep seconds (default: schedule.yaml price interval)",
+    )
+    monitor_loop.add_argument(
+        "--max-cycles",
+        type=int,
+        default=None,
+        help="Stop after N cycles (default: run until Ctrl+C)",
+    )
+    monitor_loop.add_argument(
+        "--ignore-sessions",
+        action="store_true",
+        help="Run price/risk even outside cash session (for soak tests)",
     )
 
     args = parser.parse_args(argv)
@@ -1673,6 +1766,20 @@ def main(argv: list[str] | None = None) -> int:
             demo=demo,
             live_spot=bool(args.live_spot),
             no_notify=bool(args.no_notify),
+            skip_announcements=bool(args.skip_announcements),
+        )
+
+    if args.command == "monitor-loop":
+        demo = bool(args.demo) or not bool(args.live_spot)
+        return _run_monitor_loop(
+            positions_path=Path(args.positions),
+            market=str(args.market),
+            demo=demo,
+            live_spot=bool(args.live_spot),
+            no_notify=bool(args.no_notify),
+            interval_seconds=args.interval,
+            max_cycles=args.max_cycles,
+            ignore_sessions=bool(args.ignore_sessions),
         )
 
     if args.command == "report":
