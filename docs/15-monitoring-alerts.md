@@ -1032,7 +1032,8 @@ config/notify/
 | 盘中快照 Collector / 抑制 / Telegram | ✅ | `data/collectors/akshare/spot.py`；`monitor/suppression.py`；`notify/telegram.py` |
 | B 类风控触发 | ✅ | `monitor/triggers/risk.py`；`make monitor-once` |
 | DB `manual_position` / `alert` 迁移 | ⏳ | YAML + JSON 先行 |
-| C 类公告触发 / 主循环常驻 | ⏳ | — |
+| C 类公告触发 | ✅ | `monitor/triggers/announcement.py`；DB `news.related_symbol` |
+| 主循环常驻 | ✅ | `monitor/engine.run_monitor_loop`；`make monitor-loop` |
 
 ## 12. 与既有原则的一致性
 

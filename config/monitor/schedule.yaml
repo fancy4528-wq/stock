@@ -1,0 +1,22 @@
+# P2a monitor polling schedule (resident loop).
+
+polling:
+  price_snapshot:
+    interval_seconds: 180              # 3 minutes
+    sessions_only: true                # A/B triggers only in cash session
+
+  announcements:
+    interval_seconds: 300              # 5 minutes
+    sessions_only: false               # filings arrive after close too
+    lookback_hours: 72
+
+  risk_check:
+    interval_seconds: 300
+    sessions_only: true
+
+# CN cash auction sessions (Asia/Shanghai wall clock)
+sessions:
+  timezone: "Asia/Shanghai"
+  windows:
+    - { start: "09:30", end: "11:30" }
+    - { start: "13:00", end: "15:00" }

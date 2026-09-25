@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live positions-check monitor-once test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live positions-check monitor-once monitor-loop test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -93,8 +93,11 @@ research-live: ## P2 研究 DAG：PIT + DB 工具；有 LLM_API_KEY 则走 compl
 positions-check: ## P2a：持仓 YAML 时效性检查（默认 example_cn.yaml）
 	uv run python -m quantagent.cli positions check --file data/positions/example_cn.yaml
 
-monitor-once: ## P2a：价格+风控触发 → 抑制 → 推送（demo；真实快照加 --live-spot）
+monitor-once: ## P2a：价格+风控+公告触发 → 抑制 → 推送（demo；真实快照加 --live-spot）
 	uv run python -m quantagent.cli monitor-once --positions data/positions/example_cn.yaml --demo
+
+monitor-loop: ## P2a：常驻轮询（默认 demo + 2 轮；盘中加 --live-spot）
+	uv run python -m quantagent.cli monitor-loop --positions data/positions/example_cn.yaml --demo --interval 2 --max-cycles 2 --ignore-sessions
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN

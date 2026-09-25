@@ -56,9 +56,7 @@ class ExitPolicy(BaseModel):
         lo = self.bounds.stop_loss_min
         hi = self.bounds.stop_loss_max
         if thr < lo or thr > hi:
-            raise ConfigError(
-                f"stop_loss.threshold={thr} out of bounds [{lo}, {hi}]"
-            )
+            raise ConfigError(f"stop_loss.threshold={thr} out of bounds [{lo}, {hi}]")
         if self.stop_loss.type == "trailing" and self.stop_loss.trail_pct <= 0:
             raise ConfigError("trailing stop requires trail_pct > 0")
         return self

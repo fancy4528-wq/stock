@@ -44,9 +44,7 @@ def load_price_trigger_specs(path: str | None = None) -> dict[str, TriggerSpec]:
             code=code,
             severity=str(row.get("severity", base.severity if base else "medium")),
             message=str(row.get("message", base.message if base else "{name}")),
-            cooldown_hours=float(
-                row.get("cooldown_hours", base.cooldown_hours if base else 24)
-            ),
+            cooldown_hours=float(row.get("cooldown_hours", base.cooldown_hours if base else 24)),
             enabled=bool(row.get("enabled", True)),
         )
     return specs

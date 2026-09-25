@@ -20,8 +20,7 @@ _DEFAULTS: dict[str, TriggerSpec] = {
         code="PX_TRAILING_STOP",
         severity="critical",
         message=(
-            "{name} 自持仓高点回撤 {drawdown_from_entry_high:.1%}，"
-            "触及移动止损 {trail_pct:.0%}"
+            "{name} 自持仓高点回撤 {drawdown_from_entry_high:.1%}，触及移动止损 {trail_pct:.0%}"
         ),
         cooldown_hours=24,
     ),
@@ -120,11 +119,7 @@ def evaluate_price_triggers(
     if is_holding and policy.stop_loss.enabled:
         if policy.stop_loss.type == "fixed":
             spec = specs.get("PX_STOP_LOSS")
-            if (
-                spec
-                and spec.enabled
-                and m.holding_return <= policy.stop_loss.threshold
-            ):
+            if spec and spec.enabled and m.holding_return <= policy.stop_loss.threshold:
                 hits.append(
                     _hit(
                         spec,
@@ -141,11 +136,7 @@ def evaluate_price_triggers(
             spec = specs.get("PX_TRAILING_STOP")
             trail = policy.stop_loss.trail_pct
             # drawdown_from_entry_high is negative when below high
-            if (
-                spec
-                and spec.enabled
-                and m.drawdown_from_entry_high <= -abs(trail)
-            ):
+            if spec and spec.enabled and m.drawdown_from_entry_high <= -abs(trail):
                 hits.append(
                     _hit(
                         spec,
@@ -195,12 +186,7 @@ def evaluate_price_triggers(
                 )
         elif policy.take_profit.type == "target_price":
             spec = specs.get("PX_TARGET_PRICE")
-            if (
-                spec
-                and spec.enabled
-                and m.target_price is not None
-                and m.last >= m.target_price
-            ):
+            if spec and spec.enabled and m.target_price is not None and m.last >= m.target_price:
                 hits.append(
                     _hit(
                         spec,
@@ -211,11 +197,7 @@ def evaluate_price_triggers(
                 )
 
     # Watchlist target (even when take_profit.type != target_price)
-    if (
-        not is_holding
-        and m.target_price is not None
-        and m.last >= m.target_price
-    ):
+    if not is_holding and m.target_price is not None and m.last >= m.target_price:
         spec = specs.get("PX_TARGET_PRICE")
         if spec and spec.enabled:
             hits.append(

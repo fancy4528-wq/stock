@@ -25,8 +25,17 @@ def format_alert(hit: TriggerHit, *, when: datetime | None = None) -> AlertMessa
     icon = _SEV_ICON.get(hit.severity, "")
     title = f"{icon} {hit.message}".strip()[:60]
     state_parts = []
-    for k in ("holding_return", "weight", "drawdown", "daily_pnl_pct", "cash_ratio", "last"):
-        if k in hit.evidence:
+    for k in (
+        "holding_return",
+        "weight",
+        "drawdown",
+        "daily_pnl_pct",
+        "cash_ratio",
+        "last",
+        "announce_type",
+        "title",
+    ):
+        if k in hit.evidence and hit.evidence[k] is not None:
             state_parts.append(f"{k}={hit.evidence[k]}")
     return AlertMessage(
         alert_id=alert_id_for(hit, when=when),
