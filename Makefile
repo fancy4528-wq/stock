@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live positions-check monitor-once test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -89,6 +89,12 @@ research-smoke: ## P2 多 Agent 骨架：Orchestrator → MarketBrief（fixture�
 
 research-live: ## P2 研究 DAG：PIT + DB 工具；有 LLM_API_KEY 则走 complete_with_budget
 	uv run python -m quantagent.cli research-live --max-stocks 10 --max-industries 5 --no-knowledge
+
+positions-check: ## P2a：持仓 YAML 时效性检查（默认 example_cn.yaml）
+	uv run python -m quantagent.cli positions check --file data/positions/example_cn.yaml
+
+monitor-once: ## P2a：价格+风控触发 → 抑制 → 推送（demo；真实快照加 --live-spot）
+	uv run python -m quantagent.cli monitor-once --positions data/positions/example_cn.yaml --demo
 
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN

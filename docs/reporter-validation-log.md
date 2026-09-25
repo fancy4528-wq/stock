@@ -16,3 +16,8 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-09-16T10:18:42.081783+00:00 | 20260916-cn-daily | 2026-09-16 | reporter | deterministic | true |  |  |
 | 2026-09-17T10:18:36.067385+00:00 | 20260917-cn-daily | 2026-09-17 | reporter | deterministic | true |  |  |
 | 2026-09-18T10:18:45.328317+00:00 | 20260918-cn-daily | 2026-09-18 | reporter | deterministic | true |  |  |
+| 2026-09-20T07:02:23.602625+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-09-21T10:26:08.710598+00:00 | 20260921-cn-daily | 2026-09-21 | reporter | deterministic | true |  |  |
+| 2026-09-22T11:28:44.952524+00:00 | 20260922-cn-daily | 2026-09-22 | reporter | deterministic | true |  |  |
+| 2026-09-23T10:16:42.356557+00:00 | 20260923-cn-daily | 2026-09-23 | reporter | deterministic | true |  |  |
+| 2026-09-24T10:19:20.531613+00:00 | 20260924-cn-daily | 2026-09-24 | reporter | deterministic | true |  |  |

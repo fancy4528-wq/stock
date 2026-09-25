@@ -503,6 +503,136 @@ def _run_research_live(
     return 0
 
 
+def _run_positions(
+    *,
+    action: str,
+    path: Path,
+    symbol: str | None,
+    quantity: float | None,
+    avg_cost: float | None,
+    entry_date: date | None,
+    max_trading_days: int,
+) -> int:
+    """P2a: show / check / add / remove YAML position book."""
+    from quantagent.positions import (
+        add_position,
+        check_staleness,
+        load_position_book,
+        remove_position,
+        save_position_book,
+    )
+
+    if action == "add":
+        if not symbol or quantity is None or avg_cost is None:
+            print("positions add requires --symbol --quantity --avg-cost", file=sys.stderr)
+            return 2
+        if path.is_file():
+            book = load_position_book(path)
+        else:
+            from quantagent.positions.types import ManualPositionBook
+
+            book = ManualPositionBook(account=path.stem, as_of=entry_date or date.today())
+        book = add_position(
+            book,
+            symbol=symbol,
+            quantity=quantity,
+            avg_cost=avg_cost,
+            entry_date=entry_date,
+        )
+        save_position_book(book, path)
+        print(f"positions: added {symbol} qty={quantity} cost={avg_cost} → {path}")
+        return 0
+
+    if action == "remove":
+        if not symbol:
+            print("positions remove requires --symbol", file=sys.stderr)
+            return 2
+        book = load_position_book(path)
+        book = remove_position(book, symbol)
+        save_position_book(book, path)
+        print(f"positions: removed {symbol} → {path}")
+        return 0
+
+    book = load_position_book(path)
+    print(
+        f"positions account={book.account} as_of={book.as_of.isoformat()} "
+        f"cash={book.cash:.2f} n={len(book.positions)} watch={len(book.watchlist)}"
+    )
+    if book.updated_at is not None:
+        print(f"  updated_at={book.updated_at.isoformat()}")
+    for p in book.positions:
+        high = f" high={p.entry_high}" if p.entry_high is not None else ""
+        print(
+            f"  {p.symbol:12s} qty={p.quantity:10.2f} cost={p.avg_cost:10.4f} "
+            f"entry={p.entry_date.isoformat()}{high}"
+            + (f"  {p.name}" if p.name else "")
+        )
+    for w in book.watchlist:
+        tp = f" target={w.target_price}" if w.target_price is not None else ""
+        print(f"  watch {w.symbol:12s}{tp}" + (f"  {w.reason or ''}" if w.reason else ""))
+
+    if action in {"check", "show"}:
+        open_dates: list[date] | None = None
+        try:
+            from quantagent.core.calendar import TradingCalendar
+
+            cal = TradingCalendar("CN")
+            if not cal.is_empty():
+                # Wide window so age_trading_days can count sessions after book day.
+                open_dates = cal.trading_days(date(2015, 1, 1), date.today())
+        except Exception:  # noqa: BLE001 — offline / empty calendar OK
+            open_dates = None
+        st = check_staleness(
+            book, max_trading_days=max_trading_days, open_dates=open_dates
+        )
+        print(f"  freshness: {st.message}")
+        if action == "check" and st.stale:
+            return 1
+    return 0
+
+
+def _run_monitor_once(
+    *,
+    positions_path: Path,
+    market: str,
+    demo: bool,
+    live_spot: bool,
+    no_notify: bool,
+) -> int:
+    """P2a: quotes → price+risk triggers → suppress → notify."""
+    import asyncio
+
+    from quantagent.monitor.engine import run_monitor_once
+
+    result = asyncio.run(
+        run_monitor_once(
+            positions_path=positions_path,
+            market=market,
+            demo=demo and not live_spot,
+            notify=not no_notify,
+        )
+    )
+    if result.stale_note:
+        print(f"WARN {result.stale_note}")
+    for n in result.notes:
+        print(f"note: {n}")
+    print(
+        f"monitor-once positions={positions_path} quotes={len(result.quotes)} "
+        f"raw={len(result.hits_raw)} sent={len(result.hits_sent)} "
+        f"suppressed={len(result.suppressed)}"
+    )
+    for hit in result.hits_sent:
+        print(f"  SEND [{hit.severity}] {hit.code} {hit.symbol}: {hit.message}")
+    for hit, reason in result.suppressed:
+        print(f"  SKIP [{reason}] {hit.code} {hit.symbol}")
+    for d in result.deliveries:
+        status = "ok" if d.ok else "FAIL"
+        print(f"  deliver/{d.channel} {status}: {d.detail}")
+    if not result.hits_raw:
+        print("  (no triggers fired)")
+    return 0
+
+
 async def _ingest_calendar(
     *,
     start: date | None,
@@ -1377,6 +1507,58 @@ def main(argv: list[str] | None = None) -> int:
         help="Force heuristic-only (ignore LLM_API_KEY)",
     )
 
+    positions = sub.add_parser(
+        "positions",
+        help="P2a: manage YAML position book (show/check/add/remove)",
+    )
+    positions.add_argument(
+        "action",
+        choices=["show", "check", "add", "remove"],
+        help="show=list, check=staleness (exit 1 if stale), add/remove lots",
+    )
+    positions.add_argument(
+        "--file",
+        type=Path,
+        default=Path("data/positions/example_cn.yaml"),
+        help="Position YAML path",
+    )
+    positions.add_argument("--symbol", default=None)
+    positions.add_argument("--quantity", type=float, default=None)
+    positions.add_argument("--avg-cost", type=float, default=None)
+    positions.add_argument("--entry-date", type=_parse_date, default=None)
+    positions.add_argument(
+        "--max-trading-days",
+        type=int,
+        default=5,
+        help="Staleness threshold in trading sessions (default 5)",
+    )
+
+    monitor_once = sub.add_parser(
+        "monitor-once",
+        help="P2a: price+risk triggers → suppress → notify (demo or live spot)",
+    )
+    monitor_once.add_argument(
+        "--positions",
+        type=Path,
+        default=Path("data/positions/example_cn.yaml"),
+    )
+    monitor_once.add_argument("--market", default="CN")
+    monitor_once.add_argument(
+        "--demo",
+        action="store_true",
+        help="Synthetic quotes (default if --live-spot not set)",
+    )
+    monitor_once.add_argument(
+        "--live-spot",
+        action="store_true",
+        help="Fetch East Money ulist / akshare spot for holdings+watchlist",
+    )
+    monitor_once.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="Skip notifier (still records suppression state if hits allowed)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -1469,6 +1651,28 @@ def main(argv: list[str] | None = None) -> int:
             max_industries=int(args.max_industries),
             no_knowledge=bool(args.no_knowledge),
             no_llm=bool(args.no_llm),
+        )
+
+    if args.command == "positions":
+        return _run_positions(
+            action=str(args.action),
+            path=Path(args.file),
+            symbol=args.symbol,
+            quantity=args.quantity,
+            avg_cost=args.avg_cost,
+            entry_date=args.entry_date,
+            max_trading_days=int(args.max_trading_days),
+        )
+
+    if args.command == "monitor-once":
+        # Default to demo when neither flag set (safe offline).
+        demo = bool(args.demo) or not bool(args.live_spot)
+        return _run_monitor_once(
+            positions_path=Path(args.positions),
+            market=str(args.market),
+            demo=demo,
+            live_spot=bool(args.live_spot),
+            no_notify=bool(args.no_notify),
         )
 
     if args.command == "report":

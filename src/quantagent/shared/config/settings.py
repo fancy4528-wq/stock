@@ -45,6 +45,10 @@ class Settings(BaseSettings):
         default="intfloat/multilingual-e5-large",
         alias="EMBEDDING_MODEL",
     )
+
+    # P2a Telegram notifier (empty → LogNotifier / no network send).
+    telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
     @computed_field  # type: ignore[prop-decorator]
     @property
     def database_url(self) -> str:

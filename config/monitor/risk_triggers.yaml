@@ -1,0 +1,32 @@
+# B-class risk triggers (P2a). Thresholds also reference config/risk/cn.yaml.
+
+triggers:
+  - code: "RISK_SECTOR_CONCENTRATION"
+    severity: "high"
+    message: "{industry} 行业权重达 {weight:.1%}，接近上限 {limit:.0%}"
+    cooldown_hours: 24
+
+  - code: "RISK_PORTFOLIO_DRAWDOWN"
+    severity: "critical"
+    message: "组合回撤 {drawdown:.1%}（峰值 {peak_nav:.0f} → 现 {nav:.0f}）"
+    cooldown_hours: 12
+
+  - code: "RISK_DAILY_LOSS"
+    severity: "critical"
+    message: "今日组合亏损 {daily_pnl_pct:.1%}"
+    cooldown_hours: 6
+
+  - code: "RISK_SINGLE_WEIGHT"
+    severity: "medium"
+    message: "{name} 权重 {weight:.1%} 接近单股上限 {limit:.0%}"
+    cooldown_hours: 24
+
+  - code: "RISK_CASH_LOW"
+    severity: "medium"
+    message: "现金比例 {cash_ratio:.1%}，低于建议下限 {limit:.0%}"
+    cooldown_hours: 24
+
+  - code: "RISK_DD_005"
+    severity: "critical"
+    message: "{name} 浮亏 {holding_return:.1%}，触及系统底线 -25%（强制减仓提醒）"
+    cooldown_hours: 24

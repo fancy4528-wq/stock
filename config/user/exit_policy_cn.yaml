@@ -1,0 +1,21 @@
+# User exit policy (CN). Thresholds feed PX_STOP_LOSS / PX_TAKE_PROFIT.
+# Bounds reject unsafe configs — see docs/09-portfolio-risk.md §4.2a.
+
+stop_loss:
+  enabled: true
+  type: "fixed"          # fixed | trailing | atr
+  threshold: -0.10
+  # trailing example:
+  # type: "trailing"
+  # trail_pct: 0.15
+
+take_profit:
+  enabled: true
+  type: "staged"         # none | fixed | staged | target_price
+  stages:
+    - { gain: 0.20, reduce: 0.33 }
+    - { gain: 0.50, reduce: 0.50 }
+
+bounds:
+  stop_loss_min: -0.30
+  stop_loss_max: -0.03

@@ -45,4 +45,6 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-20 | research LLM path | Macro/Sector/Stock/Chief：`complete_with_budget` + scaffold refinement；预算/解析失败回退启发式；cost-log | `agents/llm/structured.py`；`LLM_API_KEY` / `--no-llm` |
 | 2026-09-20 | Agent output validation | Gate 2：evidence 非空/refs 可解析/PIT；figures WARN；Orchestrator 绑定 `AgentTrace` | `agents/validation.py`；`make research-smoke` 打印 untraceable |
 | 2026-09-20 | shadow_agent | Gate 2：第三 shadow；信号=`MarketBrief.stock_ranking`；live 日报软跑启发式 research；按组合幂等追赶 | `evaluation/shadow/`；`data/shadow/shadow_agent.jsonl` |
+| 2026-09-20 | P2a positions + price triggers | YAML 持仓书 + 时效性；A 类价格触发骨架（止损/止盈/涨跌停/停牌/放量/MA60）；零 LLM | `positions/`；`monitor/triggers/price.py`；`make positions-check` / `monitor-once` |
+| 2026-09-20 | P2a spot + suppress + TG + risk | 东财 ulist 定向快照（akshare 全表兜底）；冷却/日上限/静默；Telegram；B 类风控含 DD_005 | `collectors/akshare/spot.py`；`monitor/{suppression,engine,triggers/risk}.py`；`notify/`；`TELEGRAM_*` |
 
