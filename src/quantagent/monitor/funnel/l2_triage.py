@@ -22,6 +22,12 @@ from quantagent.agents.llm.client import LLMClient
 from quantagent.agents.llm.factory import build_llm_client, build_token_budget
 from quantagent.agents.llm.prompts import load_prompt
 from quantagent.agents.llm.structured import llm_enabled
+from quantagent.monitor.cache import (
+    AnalysisCache,
+    L2CachedTriage,
+    holdings_hash,
+    resolve_content_hash,
+)
 from quantagent.monitor.types import TriggerHit
 from quantagent.shared.errors import (
     BudgetDegrade,
@@ -34,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 Direction = Literal["pos", "neg", "neu", ""]
 Urgency = Literal["immediate", "today", "this_week", "low", ""]
-L2Mode = Literal["llm", "heuristic", "l1_passthrough"]
+L2Mode = Literal["llm", "heuristic", "l1_passthrough", "cache"]
 
 DEFAULT_BATCH_SIZE = 10
 SUMMARY_CHARS = 200
@@ -98,6 +104,7 @@ class L2Candidate:
     candidate_symbols: list[str] = field(default_factory=list)
     uid: str = ""
     l1_severity: str = "medium"
+    content_hash: str = ""
 
 
 @dataclass
@@ -110,6 +117,8 @@ class L2Stats:
     cost_usd: float = 0.0
     mode: L2Mode = "heuristic"
     note: str = ""
+    cache_hits: int = 0
+    cache_misses: int = 0
 
 
 def chunked(items: Sequence[Any], size: int) -> list[list[Any]]:
@@ -342,13 +351,91 @@ def _fill_stats(stats: L2Stats, results: Sequence[L2Triage]) -> None:
 def candidate_from_hit(hit: TriggerHit) -> L2Candidate:
     ev = hit.evidence or {}
     syms = ev.get("mentioned_symbols") or ([hit.symbol] if hit.symbol else [])
+    title = str(ev.get("title") or hit.message or "")
+    summary = str(ev.get("summary") or "")[:SUMMARY_CHARS]
+    explicit = ev.get("content_hash")
     return L2Candidate(
-        title=str(ev.get("title") or hit.message or ""),
-        summary=str(ev.get("summary") or "")[:SUMMARY_CHARS],
+        title=title,
+        summary=summary,
         candidate_symbols=[str(s) for s in syms if s],
         uid=hit.code.split("/", 1)[-1] if "/" in hit.code else hit.code,
         l1_severity=str(ev.get("l1_severity") or hit.severity or "medium"),
+        content_hash=resolve_content_hash(
+            explicit=str(explicit) if explicit else None,
+            title=title,
+            summary=summary,
+        ),
     )
+
+
+def _cached_to_triage(cached: L2CachedTriage, *, index: int) -> L2Triage:
+    return L2Triage(
+        i=index,
+        rel=cached.rel,
+        sym=list(cached.sym),
+        dir=cached.dir or "",
+        urg=cached.urg or "",
+        deep=cached.deep,
+    )
+
+
+def _triage_to_cached(row: L2Triage) -> L2CachedTriage:
+    return L2CachedTriage(
+        rel=row.rel,
+        sym=list(row.sym),
+        dir=row.dir or "",
+        urg=row.urg or "",
+        deep=row.deep,
+    )
+
+
+def _apply_l2_rows(
+    hits: Sequence[TriggerHit],
+    triage: Sequence[L2Triage],
+    *,
+    mode: L2Mode,
+    cost_usd: float,
+    from_cache_idx: set[int] | None = None,
+) -> tuple[list[TriggerHit], int, int]:
+    """Drop rel=false; enrich keepers. Returns (out, relevant, dropped)."""
+    cached = from_cache_idx or set()
+    # Attribute LLM cost only to non-cache relevant rows
+    billable = sum(
+        1 for i, r in enumerate(triage) if r.rel and i not in cached
+    )
+    per_cost = (cost_usd / max(1, billable)) if billable else 0.0
+    out: list[TriggerHit] = []
+    for i, (hit, row) in enumerate(zip(hits, triage, strict=True)):
+        if not row.rel:
+            continue
+        primary = row.sym[0] if row.sym else hit.symbol
+        from_cache = i in cached
+        row_mode: L2Mode = "cache" if from_cache else mode
+        evidence = dict(hit.evidence or {})
+        evidence.update(
+            {
+                "l2_rel": row.rel,
+                "l2_sym": list(row.sym),
+                "l2_dir": row.dir,
+                "l2_urg": row.urg,
+                "l2_deep": row.deep,
+                "l2_mode": row_mode,
+                "l2_cache_hit": from_cache,
+                "needs_deep_analysis": row.deep,
+            }
+        )
+        out.append(
+            hit.model_copy(
+                update={
+                    "symbol": primary,
+                    "analysis_level": "L2",
+                    "cost_usd": float(hit.cost_usd or 0.0)
+                    + (0.0 if from_cache else per_cost),
+                    "evidence": evidence,
+                }
+            )
+        )
+    return out, len(out), len(hits) - len(out)
 
 
 async def refine_news_hits_with_l2(
@@ -359,13 +446,15 @@ async def refine_news_hits_with_l2(
     budget: TokenBudget | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     enabled: bool = True,
+    cache: AnalysisCache | None = None,
 ) -> tuple[list[TriggerHit], L2Stats]:
     """Filter / enrich L1 news TriggerHits via L2.
 
     - ``enabled=False`` → L1 passthrough
-    - NullLLM → heuristic (still marks analysis_level=L2)
+    - NullLLM → heuristic (still marks analysis_level=L2); not written to cache
     - Budget ``l1_only`` → L1 passthrough (analysis_level stays L1)
-    - LLM success → drop ``rel=false``; keep relevant with L2 evidence
+    - LLM success → drop ``rel=false``; keep relevant with L2 evidence; cache store
+    - Cache hit (same content_hash + holdings_hash) → skip LLM
     """
     stats = L2Stats(candidates=len(hits))
     if not hits:
@@ -377,50 +466,84 @@ async def refine_news_hits_with_l2(
         return list(hits), stats
 
     candidates = [candidate_from_hit(h) for h in hits]
-    triage, stats = await triage_batch(
-        candidates,
+    h_hash = holdings_hash(name_by_symbol.keys())
+
+    triage: list[L2Triage | None] = [None] * len(hits)
+    from_cache_idx: set[int] = set()
+    miss_indices: list[int] = []
+    miss_candidates: list[L2Candidate] = []
+
+    if cache is not None:
+        for i, cand in enumerate(candidates):
+            cached = cache.get_l2(cand.content_hash, h_hash) if cand.content_hash else None
+            if cached is not None:
+                triage[i] = _cached_to_triage(cached, index=i + 1)
+                from_cache_idx.add(i)
+            else:
+                miss_indices.append(i)
+                miss_candidates.append(cand)
+        stats.cache_hits = len(from_cache_idx)
+        stats.cache_misses = len(miss_indices)
+    else:
+        miss_indices = list(range(len(hits)))
+        miss_candidates = list(candidates)
+        stats.cache_misses = len(hits)
+
+    if not miss_indices:
+        filled = [t for t in triage if t is not None]
+        stats.mode = "cache"
+        stats.note = "all_cache"
+        stats.cost_usd = 0.0
+        out, rel, dropped = _apply_l2_rows(
+            hits, filled, mode="cache", cost_usd=0.0, from_cache_idx=from_cache_idx
+        )
+        stats.relevant = rel
+        stats.dropped = dropped
+        return out, stats
+
+    miss_triage, miss_stats = await triage_batch(
+        miss_candidates,
         name_by_symbol=name_by_symbol,
         llm=llm,
         budget=budget,
         batch_size=batch_size,
     )
+    stats.batches = miss_stats.batches
+    stats.cost_usd = miss_stats.cost_usd
+    stats.mode = miss_stats.mode
+    stats.note = miss_stats.note
+    if stats.cache_hits and stats.mode != "l1_passthrough":
+        suffix = f"cache_hits={stats.cache_hits}"
+        stats.note = f"{stats.note};{suffix}" if stats.note else suffix
 
-    if stats.mode == "l1_passthrough":
-        # Budget exhausted: keep rule-layer alerts, zero extra LLM cost attribution
+    if miss_stats.mode == "l1_passthrough":
+        # Budget exhausted: keep rule-layer alerts, do not blend cache rows
         stats.relevant = len(hits)
         stats.dropped = 0
         return list(hits), stats
 
-    out: list[TriggerHit] = []
-    per_cost = (stats.cost_usd / max(1, stats.relevant)) if stats.relevant else 0.0
-    for hit, row in zip(hits, triage, strict=True):
-        if not row.rel:
-            continue
-        primary = row.sym[0] if row.sym else hit.symbol
-        evidence = dict(hit.evidence or {})
-        evidence.update(
-            {
-                "l2_rel": row.rel,
-                "l2_sym": list(row.sym),
-                "l2_dir": row.dir,
-                "l2_urg": row.urg,
-                "l2_deep": row.deep,
-                "l2_mode": stats.mode,
-                "needs_deep_analysis": row.deep,
-            }
-        )
-        out.append(
-            hit.model_copy(
-                update={
-                    "symbol": primary,
-                    "analysis_level": "L2",
-                    "cost_usd": float(hit.cost_usd or 0.0) + per_cost,
-                    "evidence": evidence,
-                }
-            )
-        )
-    stats.relevant = len(out)
-    stats.dropped = len(hits) - len(out)
+    for idx, row in zip(miss_indices, miss_triage, strict=True):
+        triage[idx] = row.model_copy(update={"i": idx + 1})
+
+    # Persist only real LLM judgements (not heuristic / passthrough)
+    if cache is not None and miss_stats.mode == "llm":
+        for hit_i, row in zip(miss_indices, miss_triage, strict=True):
+            ch = candidates[hit_i].content_hash
+            if ch:
+                cache.set_l2(ch, h_hash, _triage_to_cached(row))
+
+    filled = [
+        t if t is not None else L2Triage(i=i + 1, rel=False) for i, t in enumerate(triage)
+    ]
+    out, rel, dropped = _apply_l2_rows(
+        hits,
+        filled,
+        mode=stats.mode,
+        cost_usd=stats.cost_usd,
+        from_cache_idx=from_cache_idx,
+    )
+    stats.relevant = rel
+    stats.dropped = dropped
     return out, stats
 
 
