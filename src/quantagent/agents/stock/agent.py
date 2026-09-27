@@ -151,13 +151,25 @@ class StockAgent:
         if self._llm is None or not self._llm.enabled():
             return heuristic
 
-        inject = {
+        inject: dict[str, Any] = {
             "as_of": ctx.as_of.isoformat(),
             "symbol": heuristic.symbol,
             "name": heuristic.name,
             "evidence": [e.model_dump(mode="json") for e in heuristic.evidence],
             "financial_health": heuristic.financial_health.model_dump(mode="json"),
         }
+        focus = ctx.upstream.get("monitor_focus")
+        prefix = (
+            "在 scaffold StockView 基础上 refinement（thesis / bull/bear / risks）；"
+            "保留 evidence_refs；财务数字必须来自 scaffold；仅输出 JSON：\n"
+        )
+        if isinstance(focus, dict) and focus:
+            inject["monitor_focus"] = focus
+            prefix = (
+                "监控触发聚焦：结合 monitor_focus（触发代码/标题/摘要/方向）评估持仓影响；"
+                "在 scaffold StockView 基础上 refinement（thesis / bull/bear / risks）；"
+                "保留 evidence_refs；财务数字必须来自 scaffold；仅输出 JSON：\n"
+            )
         refined = await complete_research_model(
             self._llm,
             agent=self.name,
@@ -168,10 +180,7 @@ class StockAgent:
             model_cls=StockView,
             inject=inject,
             repair_hint="retry",
-            user_prefix=(
-                "在 scaffold StockView 基础上 refinement（thesis / bull/bear / risks）；"
-                "保留 evidence_refs；财务数字必须来自 scaffold；仅输出 JSON：\n"
-            ),
+            user_prefix=prefix,
         )
         if refined is None:
             return heuristic
@@ -183,9 +192,7 @@ class StockAgent:
         score = score_from_return(seed.ret_20d, center=seed.preliminary_score)
         conf = min(0.7, 0.4 + abs(seed.ret_20d) * 2.0)
 
-        fin = _tool_call(
-            self._tools, "get_financials", {"symbol": seed.symbol, "periods": 4}, ctx
-        )
+        fin = _tool_call(self._tools, "get_financials", {"symbol": seed.symbol, "periods": 4}, ctx)
         ind = _tool_call(
             self._tools,
             "get_financial_indicators",
@@ -210,12 +217,8 @@ class StockAgent:
 
         fin_rows = list((fin or {}).get("rows") or []) if isinstance(fin, dict) else []
         ind_rows = list((ind or {}).get("rows") or []) if isinstance(ind, dict) else []
-        val_latest = (
-            list((val or {}).get("latest") or []) if isinstance(val, dict) else []
-        )
-        event_rows = (
-            list((events or {}).get("rows") or []) if isinstance(events, dict) else []
-        )
+        val_latest = list((val or {}).get("latest") or []) if isinstance(val, dict) else []
+        event_rows = list((events or {}).get("rows") or []) if isinstance(events, dict) else []
         rag_excerpt = ""
         if hits and isinstance(hits, list) and hits:
             rag_excerpt = str(hits[0].get("doc_ref", ""))[:80]
