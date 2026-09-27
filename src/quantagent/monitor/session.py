@@ -34,6 +34,11 @@ class MonitorSchedule(BaseModel):
             interval_seconds=300, sessions_only=False, lookback_hours=72
         )
     )
+    news: PollBlock = Field(
+        default_factory=lambda: PollBlock(
+            interval_seconds=300, sessions_only=False, lookback_hours=24
+        )
+    )
     risk_check: PollBlock = Field(
         default_factory=lambda: PollBlock(interval_seconds=300, sessions_only=True)
     )
@@ -74,6 +79,7 @@ def load_monitor_schedule(path: str | None = None) -> MonitorSchedule:
     return MonitorSchedule(
         price_snapshot=PollBlock.model_validate(polling.get("price_snapshot") or {}),
         announcements=PollBlock.model_validate(polling.get("announcements") or {}),
+        news=PollBlock.model_validate(polling.get("news") or {}),
         risk_check=PollBlock.model_validate(polling.get("risk_check") or {}),
         timezone=str(sessions.get("timezone") or "Asia/Shanghai"),
         windows=windows,

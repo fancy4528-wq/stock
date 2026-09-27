@@ -58,11 +58,53 @@ def test_run_monitor_once_includes_demo_announcement(tmp_path: Path) -> None:
             policy=SuppressionPolicy(quiet_hours=[]),
             persist_peak_nav=False,
             run_announcements=True,
+            run_news=False,
         )
     )
     codes = {h.code.split("/")[0] for h in result.hits_raw}
     assert "ANN_CRITICAL" in codes
     assert result.ran_announcements
+
+
+def test_run_monitor_once_includes_demo_news_l1(tmp_path: Path) -> None:
+    book = ManualPositionBook(
+        account="test_news",
+        as_of=date(2026, 9, 18),
+        cash=10_000,
+        positions=[
+            PositionLot(
+                symbol="600519.SH",
+                name="贵州茅台",
+                quantity=100,
+                avg_cost=1000,
+                entry_date=date(2026, 7, 1),
+                entry_high=1100,
+                industry="食品饮料",
+            )
+        ],
+    )
+    path = tmp_path / "pos.yaml"
+    save_position_book(book, path)
+    result = asyncio.run(
+        run_monitor_once(
+            positions_path=path,
+            demo=True,
+            notify=False,
+            suppression_path=tmp_path / "sup.json",
+            policy=SuppressionPolicy(quiet_hours=[]),
+            persist_peak_nav=False,
+            run_price=False,
+            run_risk=False,
+            run_announcements=False,
+            run_news=True,
+        )
+    )
+    codes = {h.code.split("/")[0] for h in result.hits_raw}
+    assert "NEWS_HIGH" in codes
+    assert result.ran_news
+    assert result.news_scanned == 2
+    assert result.news_l1_passed == 1
+    assert any("news L1" in n for n in result.notes)
 
 
 def test_run_monitor_loop_two_cycles(tmp_path: Path) -> None:
