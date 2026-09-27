@@ -74,7 +74,7 @@ class TriggerHit(BaseModel):
     symbol: str
     title: str
     message: str
-    analysis_level: Literal["L1"] = "L1"
+    analysis_level: Literal["L1", "L2", "L3"] = "L1"
     cost_usd: float = 0.0
     evidence: dict[str, Any] = Field(default_factory=dict)
     cooldown_hours: float = 24.0
