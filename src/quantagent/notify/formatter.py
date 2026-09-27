@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from quantagent.monitor.types import TriggerHit
 from quantagent.notify.base import AlertMessage
+
+if TYPE_CHECKING:
+    from quantagent.monitor.types import TriggerHit
 
 _SEV_ICON = {
     "critical": "🔴",
@@ -62,7 +65,45 @@ def format_telegram_text(alert: AlertMessage) -> str:
         lines.append(f"当前: {alert.current_state}")
     if alert.suggestion:
         lines.append(f"建议: {alert.suggestion}")
-    lines.append(
-        f"分析级别: {alert.analysis_level}  成本: ${alert.cost_usd:.4f}"
-    )
+    lines.append(f"分析级别: {alert.analysis_level}  成本: ${alert.cost_usd:.4f}")
     return "\n".join(lines)
+
+
+def format_wecom_markdown(alert: AlertMessage) -> str:
+    """企业微信 markdown（子集：标题 / 加粗 / 字体色）。"""
+    color = {
+        "critical": "warning",
+        "high": "warning",
+        "medium": "info",
+        "info": "comment",
+    }.get(alert.severity, "info")
+    lines = [
+        f"**{alert.title}**",
+        f'><font color="{color}">{alert.trigger_reason}</font>',
+    ]
+    if alert.symbols:
+        lines.append(f"标的: `{' '.join(alert.symbols)}`")
+    if alert.current_state:
+        lines.append(f"当前: {alert.current_state}")
+    if alert.suggestion:
+        lines.append(f"建议: {alert.suggestion}")
+    lines.append(f"级别: {alert.analysis_level} · 成本: ${alert.cost_usd:.4f}")
+    return "\n".join(lines)
+
+
+def format_pushplus_content(alert: AlertMessage) -> str:
+    """PushPlus markdown body (title is sent separately)."""
+    lines = [
+        f"**{alert.trigger_reason}**",
+    ]
+    if alert.symbols:
+        lines.append(f"标的: `{' '.join(alert.symbols)}`")
+    if alert.current_state:
+        lines.append(f"当前: {alert.current_state}")
+    if alert.suggestion:
+        lines.append(f"建议: {alert.suggestion}")
+    lines.append(
+        f"严重度: **{alert.severity}** · 级别: {alert.analysis_level} · 成本: ${alert.cost_usd:.4f}"
+    )
+    lines.append(f"`{alert.alert_id}`")
+    return "\n\n".join(lines)

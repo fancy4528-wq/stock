@@ -8,3 +8,6 @@ default_cooldown_hours: 24
 
 quiet_hours:
   - { start: "22:00", end: "08:00" }
+
+# Wall clock for quiet_hours (was incorrectly compared to UTC before).
+quiet_timezone: "Asia/Shanghai"

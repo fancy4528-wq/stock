@@ -58,13 +58,14 @@ def test_daily_cap() -> None:
 
 
 def test_quiet_hours_critical_bypass() -> None:
-    # 23:00 is inside 22:00-08:00
-    now = datetime(2026, 9, 20, 23, 0, tzinfo=UTC)
+    # 23:00 Asia/Shanghai is inside 22:00-08:00
+    now = datetime(2026, 9, 20, 15, 0, tzinfo=UTC)  # 23:00 CST
     pol = SuppressionPolicy(
         quiet_hours=[QuietWindow(start="22:00", end="08:00")],
+        quiet_timezone="Asia/Shanghai",
         critical_bypasses_quiet=True,
     )
-    assert in_quiet_hours(now, pol.quiet_hours)
+    assert in_quiet_hours(now, pol.quiet_hours, tz_name=pol.quiet_timezone)
     d = filter_hits(
         [_hit(severity="critical"), _hit(code="PX_VOL", severity="high", symbol="X.SH")],
         SuppressionState(),
@@ -74,6 +75,15 @@ def test_quiet_hours_critical_bypass() -> None:
     assert len(d.allowed) == 1
     assert d.allowed[0].severity == "critical"
     assert d.suppressed[0][1] == "quiet_hours"
+
+
+def test_quiet_hours_uses_shanghai_not_utc() -> None:
+    # 03:16 UTC = 11:16 Asia/Shanghai → NOT quiet
+    now = datetime(2026, 9, 25, 3, 16, tzinfo=UTC)
+    windows = [QuietWindow(start="22:00", end="08:00")]
+    assert not in_quiet_hours(now, windows, tz_name="Asia/Shanghai")
+    # Same instant misread as UTC clock WOULD be quiet — regression guard
+    assert in_quiet_hours(now, windows, tz_name="UTC")
 
 
 def test_state_roundtrip(tmp_path) -> None:  # type: ignore[no-untyped-def]

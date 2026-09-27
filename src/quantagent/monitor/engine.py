@@ -28,8 +28,9 @@ from quantagent.monitor.triggers.announcement import (
 from quantagent.monitor.triggers.registry import run_price_triggers
 from quantagent.monitor.triggers.risk import evaluate_risk_triggers
 from quantagent.monitor.types import QuoteSnapshot, TriggerHit
-from quantagent.notify import NotifierAdapter, build_notifier, format_alert
-from quantagent.notify.base import DeliveryResult
+from quantagent.notify.base import DeliveryResult, NotifierAdapter
+from quantagent.notify.factory import build_notifier
+from quantagent.notify.formatter import format_alert
 from quantagent.positions.manual import load_position_book, save_position_book
 from quantagent.positions.staleness import check_staleness
 from quantagent.positions.types import ManualPositionBook
@@ -206,12 +207,23 @@ async def run_monitor_once(
     deliveries: list[DeliveryResult] = []
     if notify and decision.allowed:
         channel = notifier or build_notifier()
-        for hit in decision.allowed:
-            alert = format_alert(hit, when=when)
-            result = await channel.send(alert)
+        # PushPlus free tier: ≤5 req/min — batch one cycle into a single digest.
+        from quantagent.notify.pushplus import PushPlusNotifier
+
+        if isinstance(channel, PushPlusNotifier):
+            alerts = [format_alert(hit, when=when) for hit in decision.allowed]
+            result = await channel.send_digest(alerts)
             deliveries.append(result)
             if result.ok:
-                state.record(hit, when=when)
+                for hit in decision.allowed:
+                    state.record(hit, when=when)
+        else:
+            for hit in decision.allowed:
+                alert = format_alert(hit, when=when)
+                result = await channel.send(alert)
+                deliveries.append(result)
+                if result.ok:
+                    state.record(hit, when=when)
         state.save(state_path)
     elif decision.allowed and not notify:
         for hit in decision.allowed:
