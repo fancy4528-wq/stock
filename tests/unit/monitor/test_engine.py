@@ -35,6 +35,7 @@ def test_run_monitor_once_demo(tmp_path: Path) -> None:
     state_path = tmp_path / "sup.json"
 
     cache_path = tmp_path / "l2_cache.json"
+    budget_path = tmp_path / "budget.json"
     result = asyncio.run(
         run_monitor_once(
             positions_path=path,
@@ -43,6 +44,7 @@ def test_run_monitor_once_demo(tmp_path: Path) -> None:
             notifier=LogNotifier(),
             suppression_path=state_path,
             cache_path=cache_path,
+            budget_path=budget_path,
             policy=SuppressionPolicy(quiet_hours=[]),
             persist_peak_nav=True,
         )
@@ -60,6 +62,7 @@ def test_run_monitor_once_demo(tmp_path: Path) -> None:
             notifier=LogNotifier(),
             suppression_path=state_path,
             cache_path=cache_path,
+            budget_path=budget_path,
             policy=SuppressionPolicy(quiet_hours=[]),
             persist_peak_nav=False,
         )
