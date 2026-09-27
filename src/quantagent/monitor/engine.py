@@ -10,7 +10,9 @@ from pathlib import Path
 
 from quantagent.agents.llm.budget import TokenBudget
 from quantagent.agents.llm.client import LLMClient
+from quantagent.agents.llm.config import load_llm_config
 from quantagent.monitor.announcements_fetch import fetch_holding_announcements
+from quantagent.monitor.budget import MonitorBudget, build_monitor_budget
 from quantagent.monitor.cache import AnalysisCache, build_analysis_cache
 from quantagent.monitor.exit_policy import load_exit_policy
 from quantagent.monitor.funnel.l2_triage import refine_news_hits_with_l2
@@ -65,6 +67,11 @@ class MonitorOnceResult:
     news_l2_cost_usd: float = 0.0
     news_l2_cache_hits: int = 0
     news_l2_cache_misses: int = 0
+    budget_spent_usd: float = 0.0
+    budget_remaining_usd: float = 0.0
+    budget_l1_only: bool = False
+    budget_l3_remaining: int = 0
+    budget_note: str | None = None
 
 
 @dataclass
@@ -72,6 +79,18 @@ class MonitorLoopResult:
     cycles: int
     last: MonitorOnceResult | None = None
     stopped_reason: str = "completed"
+
+
+def token_budget_for_monitor(monitor: MonitorBudget) -> TokenBudget:
+    """TokenBudget whose ``monitoring`` pool equals residual monitor USD today."""
+    llm = load_llm_config()
+    remaining = monitor.remaining_usd()
+    allocations = dict(llm.budget.allocations)
+    allocations["monitoring"] = remaining
+    on_exceed = dict(llm.budget.on_exceed)
+    on_exceed["monitoring"] = "l1_only" if monitor.config.on_exceed == "l1_only" else "abort"
+    budget_cfg = llm.budget.model_copy(update={"allocations": allocations, "on_exceed": on_exceed})
+    return TokenBudget(budget=budget_cfg, llm_config=llm, day=monitor.day)
 
 
 def _demo_quotes(book: ManualPositionBook) -> dict[str, QuoteSnapshot]:
@@ -203,8 +222,10 @@ async def run_monitor_once(
     news_lookback_hours: int = 24,
     llm: LLMClient | None = None,
     budget: TokenBudget | None = None,
+    monitor_budget: MonitorBudget | None = None,
     analysis_cache: AnalysisCache | None = None,
     cache_path: Path | str | None = None,
+    budget_path: Path | str | None = None,
 ) -> MonitorOnceResult:
     """Single monitor cycle — price/risk/ann L1; news L1 then optional L2 triage."""
     when = now or datetime.now(UTC)
@@ -227,6 +248,11 @@ async def run_monitor_once(
     news_l2_cache_hits = 0
     news_l2_cache_misses = 0
     did_l2 = False
+    mb = monitor_budget or build_monitor_budget(
+        account=book.account,
+        path=Path(budget_path) if budget_path else None,
+    )
+    tok = budget if budget is not None else token_budget_for_monitor(mb)
     cache = analysis_cache
     if cache is None and run_l2:
         cache = build_analysis_cache(
@@ -293,29 +319,45 @@ async def run_monitor_once(
             f"drop_rel={news_stats.drop_no_relevance} drop_sev={news_stats.drop_low_severity}"
         )
         if run_l2 and news_hits:
-            did_l2 = True
-            news_hits, l2_stats = await refine_news_hits_with_l2(
-                news_hits,
-                name_by_symbol=names,
-                llm=llm,
-                budget=budget,
-                enabled=True,
-                cache=cache,
-            )
-            news_l2_relevant = l2_stats.relevant
-            news_l2_mode = l2_stats.mode
-            news_l2_cost_usd = l2_stats.cost_usd
-            news_l2_cache_hits = l2_stats.cache_hits
-            news_l2_cache_misses = l2_stats.cache_misses
-            notes.append(
-                f"news L2 mode={l2_stats.mode} relevant={l2_stats.relevant} "
-                f"dropped={l2_stats.dropped} deep={l2_stats.deep} "
-                f"cache_hit={l2_stats.cache_hits}/{l2_stats.cache_hits + l2_stats.cache_misses} "
-                f"cost_usd={l2_stats.cost_usd:.4f}"
-                + (f" note={l2_stats.note}" if l2_stats.note else "")
-            )
+            if not mb.allow_l2():
+                news_l2_mode = "l1_passthrough"
+                news_l2_relevant = len(news_hits)
+                reason = mb.degradation_reason() or "budget l1_only"
+                notes.append(f"news L2 skipped: {reason}")
+                logger.info("L2 skipped (monitor budget): %s", reason)
+            else:
+                did_l2 = True
+                news_hits, l2_stats = await refine_news_hits_with_l2(
+                    news_hits,
+                    name_by_symbol=names,
+                    llm=llm,
+                    budget=tok,
+                    enabled=True,
+                    cache=cache,
+                )
+                news_l2_relevant = l2_stats.relevant
+                news_l2_mode = l2_stats.mode
+                news_l2_cost_usd = l2_stats.cost_usd
+                news_l2_cache_hits = l2_stats.cache_hits
+                news_l2_cache_misses = l2_stats.cache_misses
+                if l2_stats.cost_usd > 0 or l2_stats.mode == "llm":
+                    mb.record_spend(
+                        l2_stats.cost_usd,
+                        layer="l2",
+                        calls=max(1, l2_stats.batches),
+                    )
+                notes.append(
+                    f"news L2 mode={l2_stats.mode} relevant={l2_stats.relevant} "
+                    f"dropped={l2_stats.dropped} deep={l2_stats.deep} "
+                    f"cache_hit={l2_stats.cache_hits}/"
+                    f"{l2_stats.cache_hits + l2_stats.cache_misses} "
+                    f"cost_usd={l2_stats.cost_usd:.4f}"
+                    + (f" note={l2_stats.note}" if l2_stats.note else "")
+                )
 
     raw = [*price_hits, *risk_hits, *ann_hits, *news_hits]
+    mb_stats = mb.stats()
+    notes.append(mb.telemetry_line())
 
     state_path = Path(suppression_path) if suppression_path else default_state_path(book.account)
     state = SuppressionState.load(state_path)
@@ -368,6 +410,11 @@ async def run_monitor_once(
         news_l2_cost_usd=news_l2_cost_usd,
         news_l2_cache_hits=news_l2_cache_hits,
         news_l2_cache_misses=news_l2_cache_misses,
+        budget_spent_usd=mb_stats.spent_usd,
+        budget_remaining_usd=mb_stats.remaining_usd,
+        budget_l1_only=mb_stats.l1_only,
+        budget_l3_remaining=mb_stats.l3_remaining,
+        budget_note=mb_stats.note,
     )
 
 
@@ -380,6 +427,7 @@ async def run_monitor_loop(
     notifier: NotifierAdapter | None = None,
     suppression_path: Path | str | None = None,
     cache_path: Path | str | None = None,
+    budget_path: Path | str | None = None,
     max_cycles: int | None = None,
     interval_seconds: float | None = None,
     respect_sessions: bool = True,
@@ -399,6 +447,10 @@ async def run_monitor_loop(
     shared_cache = build_analysis_cache(
         account=book.account,
         path=Path(cache_path) if cache_path else None,
+    )
+    shared_budget = build_monitor_budget(
+        account=book.account,
+        path=Path(budget_path) if budget_path else None,
     )
 
     try:
@@ -434,6 +486,8 @@ async def run_monitor_loop(
                     lookback_hours=lookback,
                     news_lookback_hours=news_lookback,
                     analysis_cache=shared_cache,
+                    monitor_budget=shared_budget,
+                    budget=token_budget_for_monitor(shared_budget),
                 )
                 if callable(on_cycle):
                     on_cycle(cycles + 1, last_result)

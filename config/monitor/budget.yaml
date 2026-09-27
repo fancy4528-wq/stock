@@ -1,0 +1,10 @@
+# P2b monitor-dedicated budget (ADR-0010 / docs/15 §4.8).
+# Isolated from daily_research — exhaustion degrades to L1 rules only.
+# Gate 2b target: monitoring layer < $0.30/day.
+
+daily_usd_limit: 0.30
+l3_max_calls_per_day: 10
+on_exceed: l1_only          # l1_only | abort
+
+# Calendar day for spend / L3 counters (CN market local).
+timezone: Asia/Shanghai
