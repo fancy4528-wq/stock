@@ -10,6 +10,11 @@ polling:
     sessions_only: false               # filings arrive after close too
     lookback_hours: 72
 
+  news:
+    interval_seconds: 300              # 5 minutes — D-class L1 flash filter
+    sessions_only: false               # telegraph continues after close
+    lookback_hours: 24
+
   risk_check:
     interval_seconds: 300
     sessions_only: true

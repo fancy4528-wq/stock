@@ -602,6 +602,7 @@ def _print_monitor_result(result: object, *, positions_path: Path, label: str) -
     print(
         f"{label} positions={positions_path} quotes={len(result.quotes)} "
         f"price={result.ran_price} risk={result.ran_risk} ann={result.ran_announcements} "
+        f"news={result.ran_news} "
         f"raw={len(result.hits_raw)} sent={len(result.hits_sent)} "
         f"suppressed={len(result.suppressed)}"
     )
@@ -624,8 +625,9 @@ def _run_monitor_once(
     live_spot: bool,
     no_notify: bool,
     skip_announcements: bool,
+    skip_news: bool,
 ) -> int:
-    """P2a: quotes + announcements → triggers → suppress → notify."""
+    """Quotes + announcements + news L1 → triggers → suppress → notify."""
     import asyncio
 
     from quantagent.monitor.engine import run_monitor_once
@@ -637,6 +639,7 @@ def _run_monitor_once(
             demo=demo and not live_spot,
             notify=not no_notify,
             run_announcements=not skip_announcements,
+            run_news=not skip_news,
         )
     )
     _print_monitor_result(result, positions_path=positions_path, label="monitor-once")
@@ -1584,7 +1587,7 @@ def main(argv: list[str] | None = None) -> int:
 
     monitor_once = sub.add_parser(
         "monitor-once",
-        help="P2a: price+risk+announcement triggers → suppress → notify",
+        help="price+risk+announcement+news L1 → suppress → notify",
     )
     monitor_once.add_argument(
         "--positions",
@@ -1595,7 +1598,7 @@ def main(argv: list[str] | None = None) -> int:
     monitor_once.add_argument(
         "--demo",
         action="store_true",
-        help="Synthetic quotes + sample announcement (default if --live-spot not set)",
+        help="Synthetic quotes + sample announcement/news (default if --live-spot not set)",
     )
     monitor_once.add_argument(
         "--live-spot",
@@ -1611,6 +1614,11 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-announcements",
         action="store_true",
         help="Skip C-class announcement triggers",
+    )
+    monitor_once.add_argument(
+        "--skip-news",
+        action="store_true",
+        help="Skip D-class news L1 filter",
     )
 
     monitor_loop = sub.add_parser(
@@ -1767,6 +1775,7 @@ def main(argv: list[str] | None = None) -> int:
             live_spot=bool(args.live_spot),
             no_notify=bool(args.no_notify),
             skip_announcements=bool(args.skip_announcements),
+            skip_news=bool(args.skip_news),
         )
 
     if args.command == "monitor-loop":

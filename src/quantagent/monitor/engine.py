@@ -1,4 +1,4 @@
-"""Monitor once-loop + resident polling (P2a): quotes/ann → triggers → suppress → notify."""
+"""Monitor once-loop + resident polling: quotes/ann/news → triggers → suppress → notify."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 
 from quantagent.monitor.announcements_fetch import fetch_holding_announcements
 from quantagent.monitor.exit_policy import load_exit_policy
+from quantagent.monitor.news_fetch import fetch_monitor_news
 from quantagent.monitor.session import (
     in_cash_session,
     load_monitor_schedule,
@@ -25,6 +26,7 @@ from quantagent.monitor.triggers.announcement import (
     AnnouncementItem,
     evaluate_announcement_triggers,
 )
+from quantagent.monitor.triggers.news import NewsFeedItem, evaluate_news_triggers
 from quantagent.monitor.triggers.registry import run_price_triggers
 from quantagent.monitor.triggers.risk import evaluate_risk_triggers
 from quantagent.monitor.types import QuoteSnapshot, TriggerHit
@@ -50,6 +52,9 @@ class MonitorOnceResult:
     ran_price: bool = False
     ran_risk: bool = False
     ran_announcements: bool = False
+    ran_news: bool = False
+    news_scanned: int = 0
+    news_l1_passed: int = 0
 
 
 @dataclass
@@ -104,6 +109,30 @@ def _demo_announcements(book: ManualPositionBook) -> list[AnnouncementItem]:
     ]
 
 
+def _demo_news(book: ManualPositionBook) -> list[NewsFeedItem]:
+    """Synthetic flash items: one L1 pass, one irrelevant drop."""
+    if not book.positions:
+        return []
+    p = book.positions[0]
+    name = p.name or p.symbol
+    return [
+        NewsFeedItem(
+            title=f"{name}签署重大合同 金额超预期",
+            summary=f"{name}与下游客户签订重大合同",
+            news_id=910001,
+            source="cls",
+            content_hash="demo-news-pass",
+        ),
+        NewsFeedItem(
+            title="某科技公司发布新产品规划",
+            summary="与持仓无关的噪音快讯",
+            news_id=910002,
+            source="cls",
+            content_hash="demo-news-drop",
+        ),
+    ]
+
+
 def fetch_quotes_for_book(
     book: ManualPositionBook,
     *,
@@ -134,6 +163,14 @@ def _name_map(book: ManualPositionBook) -> dict[str, str]:
     return out
 
 
+def _industry_map(book: ManualPositionBook) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for p in book.positions:
+        if p.industry:
+            out[p.symbol] = p.industry
+    return out
+
+
 async def run_monitor_once(
     *,
     positions_path: Path | str,
@@ -148,10 +185,13 @@ async def run_monitor_once(
     run_price: bool = True,
     run_risk: bool = True,
     run_announcements: bool = True,
+    run_news: bool = True,
     announcement_items: list[AnnouncementItem] | None = None,
+    news_items: list[NewsFeedItem] | None = None,
     lookback_hours: int = 72,
+    news_lookback_hours: int = 24,
 ) -> MonitorOnceResult:
-    """Single monitor cycle — zero LLM for price + risk + announcement path."""
+    """Single monitor cycle — zero LLM for price + risk + announcement + news L1."""
     when = now or datetime.now(UTC)
     path = Path(positions_path)
     book = load_position_book(path)
@@ -163,6 +203,9 @@ async def run_monitor_once(
     price_hits: list[TriggerHit] = []
     risk_hits: list[TriggerHit] = []
     ann_hits: list[TriggerHit] = []
+    news_hits: list[TriggerHit] = []
+    news_scanned = 0
+    news_l1_passed = 0
 
     if run_price or run_risk:
         quotes, qnotes = fetch_quotes_for_book(book, demo=demo)
@@ -197,7 +240,32 @@ async def run_monitor_once(
             items, set(book.symbols()), name_by_symbol=_name_map(book)
         )
 
-    raw = [*price_hits, *risk_hits, *ann_hits]
+    if run_news:
+        if news_items is not None:
+            feed = news_items
+        elif demo:
+            feed = _demo_news(book)
+            notes.append("demo news")
+        else:
+            feed = fetch_monitor_news(
+                lookback_hours=news_lookback_hours, now=when, include_live_flash=True
+            )
+            notes.append(f"news fetched={len(feed)}")
+        news_hits, news_stats = evaluate_news_triggers(
+            feed,
+            set(book.symbols()),
+            name_by_symbol=_name_map(book),
+            industry_by_symbol=_industry_map(book),
+        )
+        news_scanned = news_stats.scanned
+        news_l1_passed = news_stats.passed
+        notes.append(
+            f"news L1 scanned={news_stats.scanned} passed={news_stats.passed} "
+            f"pass_rate={news_stats.pass_rate:.1%} "
+            f"drop_rel={news_stats.drop_no_relevance} drop_sev={news_stats.drop_low_severity}"
+        )
+
+    raw = [*price_hits, *risk_hits, *ann_hits, *news_hits]
 
     state_path = Path(suppression_path) if suppression_path else default_state_path(book.account)
     state = SuppressionState.load(state_path)
@@ -241,6 +309,9 @@ async def run_monitor_once(
         ran_price=run_price,
         ran_risk=run_risk,
         ran_announcements=run_announcements,
+        ran_news=run_news,
+        news_scanned=news_scanned,
+        news_l1_passed=news_l1_passed,
     )
 
 
@@ -257,12 +328,13 @@ async def run_monitor_loop(
     respect_sessions: bool = True,
     on_cycle: object | None = None,
 ) -> MonitorLoopResult:
-    """Resident P2a loop — each wake runs price/risk (session-gated) + announcements."""
+    """Resident loop — price/risk (session-gated) + announcements + news L1."""
     sched = load_monitor_schedule()
     sleep_s = float(
         interval_seconds if interval_seconds is not None else sched.price_snapshot.interval_seconds
     )
     lookback = int(sched.announcements.lookback_hours)
+    news_lookback = int(sched.news.lookback_hours)
     cycles = 0
     last_result: MonitorOnceResult | None = None
     reason = "completed"
@@ -276,12 +348,14 @@ async def run_monitor_loop(
                 run_price = in_sess or not sched.price_snapshot.sessions_only
                 run_risk = in_sess or not sched.risk_check.sessions_only
                 run_ann = in_sess or not sched.announcements.sessions_only
+                run_news = in_sess or not sched.news.sessions_only
             else:
                 run_price = True
                 run_risk = True
                 run_ann = True
+                run_news = True
 
-            if run_price or run_risk or run_ann:
+            if run_price or run_risk or run_ann or run_news:
                 last_result = await run_monitor_once(
                     positions_path=positions_path,
                     market=market,
@@ -294,7 +368,9 @@ async def run_monitor_loop(
                     run_price=run_price,
                     run_risk=run_risk,
                     run_announcements=run_ann,
+                    run_news=run_news,
                     lookback_hours=lookback,
+                    news_lookback_hours=news_lookback,
                 )
                 if callable(on_cycle):
                     on_cycle(cycles + 1, last_result)
