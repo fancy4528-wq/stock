@@ -51,4 +51,5 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-25 | WeCom webhook notifier | 国内渠道；`WECOM_WEBHOOK_URL` | `notify/wecom.py`；`notify/factory.py` |
 | 2026-09-25 | PushPlus notifier | 推送到微信；`PUSHPLUS_TOKEN` 优先于 WeCom/Telegram | `notify/pushplus.py` |
 | 2026-09-27 | P2b monitor budget | 监控专用日预算 + L3 次数上限；耗尽降 L1；JSON 持久化与 telemetry | `monitor/budget.py`；`config/monitor/budget.yaml` |
+| 2026-09-27 | P2b L3 deep analysis | 复用 StockAgent；`deep`/ANN_CRITICAL 升级；日调用 ≤10；monitoring 分项计费 | `monitor/funnel/l3_analysis.py` |
 

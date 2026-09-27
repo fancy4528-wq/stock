@@ -16,6 +16,7 @@ from quantagent.monitor.budget import MonitorBudget, build_monitor_budget
 from quantagent.monitor.cache import AnalysisCache, build_analysis_cache
 from quantagent.monitor.exit_policy import load_exit_policy
 from quantagent.monitor.funnel.l2_triage import refine_news_hits_with_l2
+from quantagent.monitor.funnel.l3_analysis import needs_l3, refine_hits_with_l3
 from quantagent.monitor.news_fetch import fetch_monitor_news
 from quantagent.monitor.session import (
     in_cash_session,
@@ -60,6 +61,7 @@ class MonitorOnceResult:
     ran_announcements: bool = False
     ran_news: bool = False
     ran_l2: bool = False
+    ran_l3: bool = False
     news_scanned: int = 0
     news_l1_passed: int = 0
     news_l2_relevant: int = 0
@@ -67,6 +69,9 @@ class MonitorOnceResult:
     news_l2_cost_usd: float = 0.0
     news_l2_cache_hits: int = 0
     news_l2_cache_misses: int = 0
+    news_l3_analyzed: int = 0
+    news_l3_mode: str | None = None
+    news_l3_cost_usd: float = 0.0
     budget_spent_usd: float = 0.0
     budget_remaining_usd: float = 0.0
     budget_l1_only: bool = False
@@ -216,6 +221,7 @@ async def run_monitor_once(
     run_announcements: bool = True,
     run_news: bool = True,
     run_l2: bool = True,
+    run_l3: bool = True,
     announcement_items: list[AnnouncementItem] | None = None,
     news_items: list[NewsFeedItem] | None = None,
     lookback_hours: int = 72,
@@ -227,7 +233,7 @@ async def run_monitor_once(
     cache_path: Path | str | None = None,
     budget_path: Path | str | None = None,
 ) -> MonitorOnceResult:
-    """Single monitor cycle — price/risk/ann L1; news L1 then optional L2 triage."""
+    """Single monitor cycle — L1 rules; news L2 triage; optional L3 StockAgent."""
     when = now or datetime.now(UTC)
     path = Path(positions_path)
     book = load_position_book(path)
@@ -247,7 +253,11 @@ async def run_monitor_once(
     news_l2_cost_usd = 0.0
     news_l2_cache_hits = 0
     news_l2_cache_misses = 0
+    news_l3_analyzed = 0
+    news_l3_mode: str | None = None
+    news_l3_cost_usd = 0.0
     did_l2 = False
+    did_l3 = False
     mb = monitor_budget or build_monitor_budget(
         account=book.account,
         path=Path(budget_path) if budget_path else None,
@@ -356,6 +366,36 @@ async def run_monitor_once(
                 )
 
     raw = [*price_hits, *risk_hits, *ann_hits, *news_hits]
+    if run_l3 and raw:
+        deep_candidates = [h for h in raw if needs_l3(h)]
+        if deep_candidates and mb.allow_l3():
+            did_l3 = True
+            # Refresh TokenBudget residual after any L2 spend
+            tok = budget if budget is not None else token_budget_for_monitor(mb)
+            raw, l3_stats = await refine_hits_with_l3(
+                raw,
+                name_by_symbol=_name_map(book),
+                industry_by_symbol=_industry_map(book),
+                as_of=when.date(),
+                market=market,
+                llm=llm,
+                budget=tok,
+                monitor_budget=mb,
+                enabled=True,
+            )
+            news_l3_analyzed = l3_stats.analyzed
+            news_l3_mode = l3_stats.mode
+            news_l3_cost_usd = l3_stats.cost_usd
+            notes.append(
+                f"L3 mode={l3_stats.mode} analyzed={l3_stats.analyzed} "
+                f"skipped_cap={l3_stats.skipped_cap} cost_usd={l3_stats.cost_usd:.4f}"
+                + (f" note={l3_stats.note}" if l3_stats.note else "")
+            )
+        elif deep_candidates and not mb.allow_l3():
+            news_l3_mode = "skipped"
+            reason = mb.degradation_reason() or "l3_cap"
+            notes.append(f"L3 skipped: {reason}")
+
     mb_stats = mb.stats()
     notes.append(mb.telemetry_line())
 
@@ -403,6 +443,7 @@ async def run_monitor_once(
         ran_announcements=run_announcements,
         ran_news=run_news,
         ran_l2=did_l2,
+        ran_l3=did_l3,
         news_scanned=news_scanned,
         news_l1_passed=news_l1_passed,
         news_l2_relevant=news_l2_relevant,
@@ -410,6 +451,9 @@ async def run_monitor_once(
         news_l2_cost_usd=news_l2_cost_usd,
         news_l2_cache_hits=news_l2_cache_hits,
         news_l2_cache_misses=news_l2_cache_misses,
+        news_l3_analyzed=news_l3_analyzed,
+        news_l3_mode=news_l3_mode,
+        news_l3_cost_usd=news_l3_cost_usd,
         budget_spent_usd=mb_stats.spent_usd,
         budget_remaining_usd=mb_stats.remaining_usd,
         budget_l1_only=mb_stats.l1_only,
