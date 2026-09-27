@@ -46,9 +46,14 @@ class Settings(BaseSettings):
         alias="EMBEDDING_MODEL",
     )
 
-    # P2a Telegram notifier (empty → LogNotifier / no network send).
+    # P2a notifiers (empty → LogNotifier / no network send).
+    # Prefer PushPlus (微信) when set; else WeCom webhook; else Telegram.
+    pushplus_token: str | None = Field(default=None, alias="PUSHPLUS_TOKEN")
+    pushplus_channel: str = Field(default="wechat", alias="PUSHPLUS_CHANNEL")
+    wecom_webhook_url: str | None = Field(default=None, alias="WECOM_WEBHOOK_URL")
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def database_url(self) -> str:

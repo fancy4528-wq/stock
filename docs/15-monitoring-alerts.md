@@ -576,11 +576,14 @@ class Alert(BaseModel):
 
 | 渠道 | 用途 | 优先级 |
 |---|---|---|
-| **Telegram Bot** | 主渠道，支持富文本与按钮 | 1 |
-| **ntfy / Bark** | 轻量推送，自托管友好 | 2 |
-| 企业微信 / 钉钉机器人 | 国内网络更稳 | 2 |
-| 邮件 | 日报、周报 | 3 |
-| 本地桌面通知 | 开发调试 | 4 |
+| **PushPlus** | 推送到微信（国内免 VPN，个人最易配） | 1 |
+| **企业微信群机器人** | Webhook（若企业开通） | 2 |
+| **Telegram Bot** | 富文本与反馈按钮（需可达 TG） | 3 |
+| **ntfy / Bark / 钉钉** | 备选 | 4 |
+| 邮件 | 日报、周报 | 5 |
+| 本地桌面通知 / LogNotifier | 开发调试 | 6 |
+
+环境变量优先级：`PUSHPLUS_TOKEN` → `WECOM_WEBHOOK_URL` → `TELEGRAM_BOT_TOKEN`+`TELEGRAM_CHAT_ID`；皆空则打日志。
 
 实现走适配器（与 BrokerAdapter 同思路）：
 
@@ -1030,6 +1033,8 @@ config/notify/
 | `exit_policy` + 边界校验 | ✅ | `config/user/exit_policy_cn.yaml` |
 | A 类价格触发（止损/止盈/涨跌停/停牌/放量/MA60/回撤） | ✅ | `monitor/triggers/price.py`；`make monitor-once` |
 | 盘中快照 Collector / 抑制 / Telegram | ✅ | `data/collectors/akshare/spot.py`；`monitor/suppression.py`；`notify/telegram.py` |
+| 企业微信群机器人 | ✅ | `notify/wecom.py`；`WECOM_WEBHOOK_URL` |
+| PushPlus（微信） | ✅ | `notify/pushplus.py`；`PUSHPLUS_TOKEN`（优先） |
 | B 类风控触发 | ✅ | `monitor/triggers/risk.py`；`make monitor-once` |
 | DB `manual_position` / `alert` 迁移 | ⏳ | YAML + JSON 先行 |
 | C 类公告触发 | ✅ | `monitor/triggers/announcement.py`；DB `news.related_symbol` |

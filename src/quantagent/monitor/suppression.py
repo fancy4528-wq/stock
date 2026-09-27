@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
@@ -17,7 +18,7 @@ from quantagent.shared.errors import ConfigError
 
 
 class QuietWindow(BaseModel):
-    start: str = "22:00"  # HH:MM local
+    start: str = "22:00"  # HH:MM in quiet_timezone
     end: str = "08:00"
 
 
@@ -28,6 +29,8 @@ class SuppressionPolicy(BaseModel):
     quiet_hours: list[QuietWindow] = Field(
         default_factory=lambda: [QuietWindow(start="22:00", end="08:00")]
     )
+    # Wall-clock for quiet_hours (CN market default).
+    quiet_timezone: str = "Asia/Shanghai"
     # critical bypasses quiet hours
     critical_bypasses_quiet: bool = True
     # default cooldown when hit has none
@@ -80,10 +83,16 @@ def _parse_hhmm(value: str) -> time:
     return time(int(hh), int(mm))
 
 
-def in_quiet_hours(now: datetime, windows: list[QuietWindow]) -> bool:
-    local_t = now.timetz().replace(tzinfo=None) if now.tzinfo else now.time()
-    # Compare as naive clock time
-    clock = time(local_t.hour, local_t.minute, local_t.second)
+def in_quiet_hours(
+    now: datetime,
+    windows: list[QuietWindow],
+    *,
+    tz_name: str = "Asia/Shanghai",
+) -> bool:
+    """True if ``now`` falls in a quiet window in ``tz_name`` (not raw UTC clock)."""
+    tz = ZoneInfo(tz_name)
+    local = now.replace(tzinfo=tz) if now.tzinfo is None else now.astimezone(tz)
+    clock = time(local.hour, local.minute, local.second)
     for w in windows:
         start = _parse_hhmm(w.start)
         end = _parse_hhmm(w.end)
@@ -130,8 +139,8 @@ def filter_hits(
     batch_sym = dict(per_sym)
 
     for hit in hits:
-        # Quiet hours
-        if in_quiet_hours(when, policy.quiet_hours):
+        # Quiet hours (Asia/Shanghai wall clock by default)
+        if in_quiet_hours(when, policy.quiet_hours, tz_name=policy.quiet_timezone):
             if not (policy.critical_bypasses_quiet and hit.severity == "critical"):
                 suppressed.append((hit, "quiet_hours"))
                 continue

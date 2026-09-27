@@ -8,7 +8,6 @@ import httpx
 
 from quantagent.notify.base import AlertMessage, DeliveryResult, NotifierAdapter
 from quantagent.notify.formatter import format_telegram_text
-from quantagent.shared.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +78,3 @@ class TelegramNotifier(NotifierAdapter):
             return DeliveryResult(
                 ok=False, channel="telegram", detail=f"{type(exc).__name__}: {exc}"
             )
-
-
-def build_notifier() -> NotifierAdapter:
-    """Telegram if credentials set; otherwise LogNotifier."""
-    from quantagent.notify.base import LogNotifier
-
-    settings = get_settings()
-    token = (settings.telegram_bot_token or "").strip()
-    chat = (settings.telegram_chat_id or "").strip()
-    if token and chat:
-        return TelegramNotifier(bot_token=token, chat_id=chat)
-    return LogNotifier()
