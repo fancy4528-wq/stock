@@ -602,7 +602,7 @@ def _print_monitor_result(result: object, *, positions_path: Path, label: str) -
     print(
         f"{label} positions={positions_path} quotes={len(result.quotes)} "
         f"price={result.ran_price} risk={result.ran_risk} ann={result.ran_announcements} "
-        f"news={result.ran_news} "
+        f"news={result.ran_news} l2={result.ran_l2} "
         f"raw={len(result.hits_raw)} sent={len(result.hits_sent)} "
         f"suppressed={len(result.suppressed)}"
     )
@@ -626,8 +626,9 @@ def _run_monitor_once(
     no_notify: bool,
     skip_announcements: bool,
     skip_news: bool,
+    skip_l2: bool,
 ) -> int:
-    """Quotes + announcements + news L1 → triggers → suppress → notify."""
+    """Quotes + announcements + news L1/L2 → triggers → suppress → notify."""
     import asyncio
 
     from quantagent.monitor.engine import run_monitor_once
@@ -640,6 +641,7 @@ def _run_monitor_once(
             notify=not no_notify,
             run_announcements=not skip_announcements,
             run_news=not skip_news,
+            run_l2=not skip_l2,
         )
     )
     _print_monitor_result(result, positions_path=positions_path, label="monitor-once")
@@ -1587,7 +1589,7 @@ def main(argv: list[str] | None = None) -> int:
 
     monitor_once = sub.add_parser(
         "monitor-once",
-        help="price+risk+announcement+news L1 → suppress → notify",
+        help="price+risk+announcement+news L1/L2 → suppress → notify",
     )
     monitor_once.add_argument(
         "--positions",
@@ -1619,6 +1621,11 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-news",
         action="store_true",
         help="Skip D-class news L1 filter",
+    )
+    monitor_once.add_argument(
+        "--skip-l2",
+        action="store_true",
+        help="Skip L2 small-model triage (keep L1 news hits as-is)",
     )
 
     monitor_loop = sub.add_parser(
@@ -1776,6 +1783,7 @@ def main(argv: list[str] | None = None) -> int:
             no_notify=bool(args.no_notify),
             skip_announcements=bool(args.skip_announcements),
             skip_news=bool(args.skip_news),
+            skip_l2=bool(args.skip_l2),
         )
 
     if args.command == "monitor-loop":

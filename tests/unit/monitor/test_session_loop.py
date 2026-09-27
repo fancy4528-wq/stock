@@ -102,9 +102,15 @@ def test_run_monitor_once_includes_demo_news_l1(tmp_path: Path) -> None:
     codes = {h.code.split("/")[0] for h in result.hits_raw}
     assert "NEWS_HIGH" in codes
     assert result.ran_news
+    assert result.ran_l2
     assert result.news_scanned == 2
     assert result.news_l1_passed == 1
+    assert result.news_l2_relevant == 1
+    assert result.news_l2_mode == "heuristic"  # NullLLM offline
     assert any("news L1" in n for n in result.notes)
+    assert any("news L2" in n for n in result.notes)
+    news_hits = [h for h in result.hits_raw if h.code.startswith("NEWS_")]
+    assert news_hits and news_hits[0].analysis_level == "L2"
 
 
 def test_run_monitor_loop_two_cycles(tmp_path: Path) -> None:

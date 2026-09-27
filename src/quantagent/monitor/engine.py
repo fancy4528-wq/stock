@@ -8,8 +8,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from quantagent.agents.llm.budget import TokenBudget
+from quantagent.agents.llm.client import LLMClient
 from quantagent.monitor.announcements_fetch import fetch_holding_announcements
 from quantagent.monitor.exit_policy import load_exit_policy
+from quantagent.monitor.funnel.l2_triage import refine_news_hits_with_l2
 from quantagent.monitor.news_fetch import fetch_monitor_news
 from quantagent.monitor.session import (
     in_cash_session,
@@ -53,8 +56,12 @@ class MonitorOnceResult:
     ran_risk: bool = False
     ran_announcements: bool = False
     ran_news: bool = False
+    ran_l2: bool = False
     news_scanned: int = 0
     news_l1_passed: int = 0
+    news_l2_relevant: int = 0
+    news_l2_mode: str | None = None
+    news_l2_cost_usd: float = 0.0
 
 
 @dataclass
@@ -186,12 +193,15 @@ async def run_monitor_once(
     run_risk: bool = True,
     run_announcements: bool = True,
     run_news: bool = True,
+    run_l2: bool = True,
     announcement_items: list[AnnouncementItem] | None = None,
     news_items: list[NewsFeedItem] | None = None,
     lookback_hours: int = 72,
     news_lookback_hours: int = 24,
+    llm: LLMClient | None = None,
+    budget: TokenBudget | None = None,
 ) -> MonitorOnceResult:
-    """Single monitor cycle — zero LLM for price + risk + announcement + news L1."""
+    """Single monitor cycle — price/risk/ann L1; news L1 then optional L2 triage."""
     when = now or datetime.now(UTC)
     path = Path(positions_path)
     book = load_position_book(path)
@@ -206,6 +216,10 @@ async def run_monitor_once(
     news_hits: list[TriggerHit] = []
     news_scanned = 0
     news_l1_passed = 0
+    news_l2_relevant = 0
+    news_l2_mode: str | None = None
+    news_l2_cost_usd = 0.0
+    did_l2 = False
 
     if run_price or run_risk:
         quotes, qnotes = fetch_quotes_for_book(book, demo=demo)
@@ -251,10 +265,11 @@ async def run_monitor_once(
                 lookback_hours=news_lookback_hours, now=when, include_live_flash=True
             )
             notes.append(f"news fetched={len(feed)}")
+        names = _name_map(book)
         news_hits, news_stats = evaluate_news_triggers(
             feed,
             set(book.symbols()),
-            name_by_symbol=_name_map(book),
+            name_by_symbol=names,
             industry_by_symbol=_industry_map(book),
         )
         news_scanned = news_stats.scanned
@@ -264,6 +279,24 @@ async def run_monitor_once(
             f"pass_rate={news_stats.pass_rate:.1%} "
             f"drop_rel={news_stats.drop_no_relevance} drop_sev={news_stats.drop_low_severity}"
         )
+        if run_l2 and news_hits:
+            did_l2 = True
+            news_hits, l2_stats = await refine_news_hits_with_l2(
+                news_hits,
+                name_by_symbol=names,
+                llm=llm,
+                budget=budget,
+                enabled=True,
+            )
+            news_l2_relevant = l2_stats.relevant
+            news_l2_mode = l2_stats.mode
+            news_l2_cost_usd = l2_stats.cost_usd
+            notes.append(
+                f"news L2 mode={l2_stats.mode} relevant={l2_stats.relevant} "
+                f"dropped={l2_stats.dropped} deep={l2_stats.deep} "
+                f"cost_usd={l2_stats.cost_usd:.4f}"
+                + (f" note={l2_stats.note}" if l2_stats.note else "")
+            )
 
     raw = [*price_hits, *risk_hits, *ann_hits, *news_hits]
 
@@ -310,8 +343,12 @@ async def run_monitor_once(
         ran_risk=run_risk,
         ran_announcements=run_announcements,
         ran_news=run_news,
+        ran_l2=did_l2,
         news_scanned=news_scanned,
         news_l1_passed=news_l1_passed,
+        news_l2_relevant=news_l2_relevant,
+        news_l2_mode=news_l2_mode,
+        news_l2_cost_usd=news_l2_cost_usd,
     )
 
 
@@ -328,7 +365,7 @@ async def run_monitor_loop(
     respect_sessions: bool = True,
     on_cycle: object | None = None,
 ) -> MonitorLoopResult:
-    """Resident loop — price/risk (session-gated) + announcements + news L1."""
+    """Resident loop — price/risk (session-gated) + announcements + news L1/L2."""
     sched = load_monitor_schedule()
     sleep_s = float(
         interval_seconds if interval_seconds is not None else sched.price_snapshot.interval_seconds
