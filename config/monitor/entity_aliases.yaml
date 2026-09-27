@@ -1,0 +1,77 @@
+# L1 entity alias dictionary (P2b). Zero LLM — substring match, longer first.
+# Seed: common holdings / watchlist names + a few large-cap aliases.
+# Extend manually; later can auto-seed from security.name + news mining.
+
+aliases:
+  "600519.SH":
+    - "贵州茅台酒股份有限公司"
+    - "贵州茅台"
+    - "茅台酒"
+    - "茅台"
+  "000858.SZ":
+    - "宜宾五粮液股份有限公司"
+    - "宜宾五粮液"
+    - "五粮液"
+  "300750.SZ":
+    - "宁德时代新能源科技"
+    - "宁德时代"
+    - "时代新能源"
+    - "CATL"
+  "601318.SH":
+    - "中国平安保险"
+    - "中国平安"
+    - "平安保险"
+  "600036.SH":
+    - "招商银行"
+    - "招行"
+  "601012.SH":
+    - "隆基绿能科技"
+    - "隆基绿能"
+    - "隆基股份"
+    - "隆基"
+  "002594.SZ":
+    - "比亚迪股份"
+    - "比亚迪"
+    - "BYD"
+  "600276.SH":
+    - "江苏恒瑞医药"
+    - "恒瑞医药"
+    - "恒瑞"
+  "000333.SZ":
+    - "美的集团"
+    - "美的"
+  "601888.SH":
+    - "中国中免"
+    - "中免"
+    - "免税"
+
+# Industry keywords used when no direct entity alias hits.
+# Keys must match ManualPosition.industry (or caller-supplied industry_by_symbol).
+industries:
+  "食品饮料":
+    - "食品饮料"
+    - "白酒板块"
+    - "白酒"
+    - "酱香"
+    - "浓香型"
+  "电力设备":
+    - "动力电池"
+    - "锂电"
+    - "新能源车"
+    - "电动车"
+  "银行":
+    - "银行业"
+    - "银行股"
+    - "净息差"
+  "非银金融":
+    - "保险板块"
+    - "券商板块"
+    - "券商"
+  "医药生物":
+    - "医药板块"
+    - "创新药"
+    - "集采"
+  "家用电器":
+    - "家电板块"
+    - "白电"
+    - "家电"
