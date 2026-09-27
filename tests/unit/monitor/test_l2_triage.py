@@ -239,3 +239,14 @@ def test_price_and_l1_still_forbid_l2_imports() -> None:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 for bad in forbidden:
                     assert not node.module.startswith(bad), f"{path}: from {node.module}"
+
+    # cache.py must stay LLM-free (zero-cost boundary)
+    cache_src = root / "src" / "quantagent" / "monitor" / "cache.py"
+    tree = ast.parse(cache_src.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert not alias.name.startswith("quantagent.agents")
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            assert not node.module.startswith("quantagent.agents")
+            assert not node.module.startswith("quantagent.monitor.funnel.l2")

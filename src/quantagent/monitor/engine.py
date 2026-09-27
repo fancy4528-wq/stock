@@ -11,6 +11,7 @@ from pathlib import Path
 from quantagent.agents.llm.budget import TokenBudget
 from quantagent.agents.llm.client import LLMClient
 from quantagent.monitor.announcements_fetch import fetch_holding_announcements
+from quantagent.monitor.cache import AnalysisCache, build_analysis_cache
 from quantagent.monitor.exit_policy import load_exit_policy
 from quantagent.monitor.funnel.l2_triage import refine_news_hits_with_l2
 from quantagent.monitor.news_fetch import fetch_monitor_news
@@ -62,6 +63,8 @@ class MonitorOnceResult:
     news_l2_relevant: int = 0
     news_l2_mode: str | None = None
     news_l2_cost_usd: float = 0.0
+    news_l2_cache_hits: int = 0
+    news_l2_cache_misses: int = 0
 
 
 @dataclass
@@ -200,6 +203,8 @@ async def run_monitor_once(
     news_lookback_hours: int = 24,
     llm: LLMClient | None = None,
     budget: TokenBudget | None = None,
+    analysis_cache: AnalysisCache | None = None,
+    cache_path: Path | str | None = None,
 ) -> MonitorOnceResult:
     """Single monitor cycle — price/risk/ann L1; news L1 then optional L2 triage."""
     when = now or datetime.now(UTC)
@@ -219,7 +224,15 @@ async def run_monitor_once(
     news_l2_relevant = 0
     news_l2_mode: str | None = None
     news_l2_cost_usd = 0.0
+    news_l2_cache_hits = 0
+    news_l2_cache_misses = 0
     did_l2 = False
+    cache = analysis_cache
+    if cache is None and run_l2:
+        cache = build_analysis_cache(
+            account=book.account,
+            path=Path(cache_path) if cache_path else None,
+        )
 
     if run_price or run_risk:
         quotes, qnotes = fetch_quotes_for_book(book, demo=demo)
@@ -287,13 +300,17 @@ async def run_monitor_once(
                 llm=llm,
                 budget=budget,
                 enabled=True,
+                cache=cache,
             )
             news_l2_relevant = l2_stats.relevant
             news_l2_mode = l2_stats.mode
             news_l2_cost_usd = l2_stats.cost_usd
+            news_l2_cache_hits = l2_stats.cache_hits
+            news_l2_cache_misses = l2_stats.cache_misses
             notes.append(
                 f"news L2 mode={l2_stats.mode} relevant={l2_stats.relevant} "
                 f"dropped={l2_stats.dropped} deep={l2_stats.deep} "
+                f"cache_hit={l2_stats.cache_hits}/{l2_stats.cache_hits + l2_stats.cache_misses} "
                 f"cost_usd={l2_stats.cost_usd:.4f}"
                 + (f" note={l2_stats.note}" if l2_stats.note else "")
             )
@@ -349,6 +366,8 @@ async def run_monitor_once(
         news_l2_relevant=news_l2_relevant,
         news_l2_mode=news_l2_mode,
         news_l2_cost_usd=news_l2_cost_usd,
+        news_l2_cache_hits=news_l2_cache_hits,
+        news_l2_cache_misses=news_l2_cache_misses,
     )
 
 
@@ -360,6 +379,7 @@ async def run_monitor_loop(
     notify: bool = True,
     notifier: NotifierAdapter | None = None,
     suppression_path: Path | str | None = None,
+    cache_path: Path | str | None = None,
     max_cycles: int | None = None,
     interval_seconds: float | None = None,
     respect_sessions: bool = True,
@@ -375,6 +395,11 @@ async def run_monitor_loop(
     cycles = 0
     last_result: MonitorOnceResult | None = None
     reason = "completed"
+    book = load_position_book(Path(positions_path))
+    shared_cache = build_analysis_cache(
+        account=book.account,
+        path=Path(cache_path) if cache_path else None,
+    )
 
     try:
         while max_cycles is None or cycles < max_cycles:
@@ -408,6 +433,7 @@ async def run_monitor_loop(
                     run_news=run_news,
                     lookback_hours=lookback,
                     news_lookback_hours=news_lookback,
+                    analysis_cache=shared_cache,
                 )
                 if callable(on_cycle):
                     on_cycle(cycles + 1, last_result)
