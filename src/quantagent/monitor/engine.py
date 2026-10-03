@@ -65,11 +65,14 @@ class MonitorOnceResult:
     news_scanned: int = 0
     news_l1_passed: int = 0
     news_l2_relevant: int = 0
+    news_l2_dropped: int = 0
+    news_l2_deep: int = 0
     news_l2_mode: str | None = None
     news_l2_cost_usd: float = 0.0
     news_l2_cache_hits: int = 0
     news_l2_cache_misses: int = 0
     news_l3_analyzed: int = 0
+    news_l3_skipped_cap: int = 0
     news_l3_mode: str | None = None
     news_l3_cost_usd: float = 0.0
     budget_spent_usd: float = 0.0
@@ -249,11 +252,14 @@ async def run_monitor_once(
     news_scanned = 0
     news_l1_passed = 0
     news_l2_relevant = 0
+    news_l2_dropped = 0
+    news_l2_deep = 0
     news_l2_mode: str | None = None
     news_l2_cost_usd = 0.0
     news_l2_cache_hits = 0
     news_l2_cache_misses = 0
     news_l3_analyzed = 0
+    news_l3_skipped_cap = 0
     news_l3_mode: str | None = None
     news_l3_cost_usd = 0.0
     did_l2 = False
@@ -346,6 +352,8 @@ async def run_monitor_once(
                     cache=cache,
                 )
                 news_l2_relevant = l2_stats.relevant
+                news_l2_dropped = l2_stats.dropped
+                news_l2_deep = l2_stats.deep
                 news_l2_mode = l2_stats.mode
                 news_l2_cost_usd = l2_stats.cost_usd
                 news_l2_cache_hits = l2_stats.cache_hits
@@ -384,6 +392,7 @@ async def run_monitor_once(
                 enabled=True,
             )
             news_l3_analyzed = l3_stats.analyzed
+            news_l3_skipped_cap = l3_stats.skipped_cap
             news_l3_mode = l3_stats.mode
             news_l3_cost_usd = l3_stats.cost_usd
             notes.append(
@@ -447,11 +456,14 @@ async def run_monitor_once(
         news_scanned=news_scanned,
         news_l1_passed=news_l1_passed,
         news_l2_relevant=news_l2_relevant,
+        news_l2_dropped=news_l2_dropped,
+        news_l2_deep=news_l2_deep,
         news_l2_mode=news_l2_mode,
         news_l2_cost_usd=news_l2_cost_usd,
         news_l2_cache_hits=news_l2_cache_hits,
         news_l2_cache_misses=news_l2_cache_misses,
         news_l3_analyzed=news_l3_analyzed,
+        news_l3_skipped_cap=news_l3_skipped_cap,
         news_l3_mode=news_l3_mode,
         news_l3_cost_usd=news_l3_cost_usd,
         budget_spent_usd=mb_stats.spent_usd,

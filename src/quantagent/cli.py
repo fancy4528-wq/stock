@@ -687,6 +687,46 @@ def _run_monitor_loop(
     return 0
 
 
+def _run_monitor_funnel_replay(
+    *,
+    positions_path: Path,
+    market: str,
+    start: date,
+    end: date,
+    write_cost_log: Path | None,
+    skip_announcements: bool,
+    live_llm: bool,
+) -> int:
+    """Gate 2b: replay D-class funnel over historical sessions; optional cost-log append."""
+    from datetime import date as date_cls
+
+    from quantagent.agents.llm.client import NullLLMClient
+    from quantagent.agents.llm.factory import build_llm_client
+    from quantagent.monitor.funnel.replay import (
+        append_cost_log,
+        format_cost_log_section,
+        replay_funnel,
+    )
+
+    llm = build_llm_client(tier="small") if live_llm else NullLLMClient()
+    summary = asyncio.run(
+        replay_funnel(
+            positions_path=positions_path,
+            start=start,
+            end=end,
+            market=market,
+            llm=llm,
+            run_announcements=not skip_announcements,
+        )
+    )
+    section = format_cost_log_section(summary, generated_on=date_cls.today())
+    print(section)
+    if write_cost_log is not None:
+        append_cost_log(write_cost_log, section)
+        print(f"appended {write_cost_log}")
+    return 0
+
+
 async def _ingest_calendar(
     *,
     start: date | None,
@@ -1667,6 +1707,37 @@ def main(argv: list[str] | None = None) -> int:
         help="Run price/risk even outside cash session (for soak tests)",
     )
 
+    funnel_replay = sub.add_parser(
+        "monitor-funnel-replay",
+        help="Gate 2b: replay news L1/L2/L3 over historical CN sessions",
+    )
+    funnel_replay.add_argument(
+        "--positions",
+        type=Path,
+        default=Path("data/positions/example_cn.yaml"),
+    )
+    funnel_replay.add_argument("--market", default="CN")
+    funnel_replay.add_argument("--start", type=_parse_date, default=date(2026, 9, 2))
+    funnel_replay.add_argument("--end", type=_parse_date, default=date(2026, 9, 30))
+    funnel_replay.add_argument(
+        "--write-cost-log",
+        type=Path,
+        nargs="?",
+        const=Path("docs/cost-log.md"),
+        default=None,
+        help="Append markdown section to cost-log (default path if flag has no value)",
+    )
+    funnel_replay.add_argument(
+        "--skip-announcements",
+        action="store_true",
+        help="News funnel only (still counts L3 from news deep flags)",
+    )
+    funnel_replay.add_argument(
+        "--live-llm",
+        action="store_true",
+        help="Call configured small/medium models (default: NullLLM heuristic, $0)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "init-reference-data":
@@ -1797,6 +1868,17 @@ def main(argv: list[str] | None = None) -> int:
             interval_seconds=args.interval,
             max_cycles=args.max_cycles,
             ignore_sessions=bool(args.ignore_sessions),
+        )
+
+    if args.command == "monitor-funnel-replay":
+        return _run_monitor_funnel_replay(
+            positions_path=Path(args.positions),
+            market=str(args.market),
+            start=args.start,
+            end=args.end,
+            write_cost_log=args.write_cost_log,
+            skip_announcements=bool(args.skip_announcements),
+            live_llm=bool(args.live_llm),
         )
 
     if args.command == "report":

@@ -33,6 +33,7 @@ def fetch_holding_announcements(
         return []
     when = now or datetime.now(UTC)
     since = when - timedelta(hours=int(lookback_hours))
+    until = when
     eng = engine or _engine()
     stmt = text(
         """
@@ -42,6 +43,7 @@ def fetch_holding_announcements(
         FROM news
         WHERE related_symbol IN :symbols
           AND published_at >= :since
+          AND published_at <= :until
         ORDER BY published_at DESC, news_id DESC
         LIMIT :lim
         """
@@ -51,7 +53,7 @@ def fetch_holding_announcements(
             rows = (
                 conn.execute(
                     stmt,
-                    {"symbols": list(syms), "since": since, "lim": int(limit)},
+                    {"symbols": list(syms), "since": since, "until": until, "lim": int(limit)},
                 )
                 .mappings()
                 .all()

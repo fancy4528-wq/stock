@@ -39,6 +39,7 @@ def fetch_news_from_db(
         return []
     when = now or datetime.now(UTC)
     since = when - timedelta(hours=int(lookback_hours))
+    until = when
     eng = engine or _engine()
     # Expanding IN for sources — use ANY-style via bindparam if needed;
     # small fixed set: inline placeholders safely.
@@ -51,11 +52,12 @@ def fetch_news_from_db(
         FROM news
         WHERE source IN ({placeholders})
           AND published_at >= :since
+          AND published_at <= :until
         ORDER BY published_at DESC, news_id DESC
         LIMIT :lim
         """
     )
-    params: dict[str, Any] = {"since": since, "lim": int(limit)}
+    params: dict[str, Any] = {"since": since, "until": until, "lim": int(limit)}
     for i, s in enumerate(srcs):
         params[f"s{i}"] = s
     try:

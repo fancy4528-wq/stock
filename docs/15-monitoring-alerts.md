@@ -1039,6 +1039,7 @@ config/notify/
 | DB `manual_position` / `alert` 迁移 | ⏳ | YAML + JSON 先行 |
 | C 类公告触发 | ✅ | `monitor/triggers/announcement.py`；DB `news.related_symbol` |
 | 主循环常驻 | ✅ | `monitor/engine.run_monitor_loop`；`make monitor-loop` |
+| Gate 2b 漏斗历史回放 | ✅ | `make monitor-funnel-replay`；`docs/cost-log.md` |
 
 ## 12. 与既有原则的一致性
 
