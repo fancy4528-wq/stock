@@ -53,4 +53,5 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-27 | P2b monitor budget | 监控专用日预算 + L3 次数上限；耗尽降 L1；JSON 持久化与 telemetry | `monitor/budget.py`；`config/monitor/budget.yaml` |
 | 2026-09-27 | P2b L3 deep analysis | 复用 StockAgent；`deep`/ANN_CRITICAL 升级；日调用 ≤10；monitoring 分项计费 | `monitor/funnel/l3_analysis.py` |
 | 2026-10-03 | Gate 1 日报窗口 | 连续 20 开市日日报 2026-09-02～30（09-25～27 休市无文件）；`trading_calendar` 核验 | `docs/11-mvp.md` 8.4/8.8；`docs/phase-log.md` |
+| 2026-10-03 | Gate 2b funnel replay | 20 个交易日 L1/L2/L3 回放（heuristic）；快讯查询补 `published_at <= now` | `monitor/funnel/replay.py`；`make monitor-funnel-replay` |
 
