@@ -326,7 +326,7 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ## 8. MVP 验收清单（Gate 1）
 
-> **盘点日期：2026-09-12（二次：当日缺口补齐后）**  
+> **盘点日期：2026-10-03（三次：连续 20 交易日日报已齐）**  
 > 图例：✅ 达标 · ⚠️ 部分达标 · ❌ 缺口 · ❓ 缺实测证据
 
 ### 8.1 数据正确性
@@ -366,8 +366,8 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 
 ### 8.4 流程自动化
 
-- [x] ✅ 调度器每日自动运行，无需人工触发 — `schedule-live-hang`：retry×3、`max_instances=1`、misfire grace、pipeline FATAL 告警、Shadow 同日幂等；长期无人值守证据仍随 20 日累积
-- [ ] ❌ 连续 20 个交易日无中断 — 日报约 2026-09-02～11（≤10 日）
+- [x] ✅ 调度器每日自动运行，无需人工触发 — `schedule-live-hang`：retry×3、`max_instances=1`、misfire grace、pipeline FATAL 告警、Shadow 同日幂等；2026-09-02～30 窗口内按 `trading_calendar` 跳过休市日
+- [x] ✅ 连续 20 个交易日无中断 — `docs/daily-reports/2026-09-{02,03,04,07,08,09,10,11,14,15,16,17,18,21,22,23,24,28,29,30}.md`；库内该窗开市日共 20 个（09-25～27 中秋/周末 `is_open=false`，无日报）。`reporter-validation-log` 窗口内记录全部 `ok=true`。备注：09-02～11 曾于 09-13 为接入事件节重写；少数 run 的 UTC 时间对应北京时间晚于 18:00（09-14/22/29）
 - [x] ✅ 数据质量 FATAL 时正确中止且告警 — abort + `notify_data_quality_fatal` → `data/alerts/fatal.log`
 - [x] ✅ 数据源失效时正确降级并标注 — `try_collect_with_fallback` + 日报质量行「数据源降级」
 - [x] ✅ `run_id` 贯穿全链路 — report/agent/shadow + `DailyRefreshResult.run_id`
@@ -397,23 +397,19 @@ P1 完成标志：连续 20 个交易日自动产出日报，Shadow Portfolio �
 - [x] ✅ README 的快速上手步骤可用
 - [x] ✅ 无硬编码市场常量（CI 检查通过） — `test_no_hardcoded_market_constants` + CI lint
 
-### 8.8 盘点汇总（2026-09-12 四项补齐后）
+### 8.8 盘点汇总（2026-10-03）
 
 | 状态 | 项数 | 占比 |
 |---|---:|---:|
-| ✅ | 46 | 98% |
+| ✅ | 47 | 100% |
 | ⚠️ | 0 | 0% |
-| ❌ | 1 | 2% |
+| ❌ | 0 | 0% |
 | ❓ | 0 | 0% |
 | **合计** | **47** | |
 
-**Gate 1 结论：仍未正式通过**（唯一缺口：连续 20 日日报）。
+**Gate 1 结论：通过**（连续 20 交易日日报已齐；其余项 2026-09-12 已达标）。
 
-**仍未闭合**
-
-1. ❌ 连续 20 交易日无中断日报（后台继续跑，约再 10 日）
-
-**已在 2026-09-12 补齐（含月度 universe / Reporter 失败率 / 退市样本 / 调度硬化）**：双源行情、`adjust_factor`、日历 +1y、FATAL 告警、源降级、`run_pit`（含 PIT_002/008/005 月末）、生存者偏差探针、`lint_pit`/CI、as_of/assert、8 因子 IC、单因子↔IC、拒单统计、Evidence/20 抽检、cost-log、reporter-validation-log、因果抽检、Shadow DB append-only + 同日幂等、Buy&Hold→`SimulatedBroker`、调度 retry/FATAL/`max_instances`、月度 snapshot 回填脚本、mypy/ruff/README、**50 池 10 年日线 + 沪深300 + 复权因子**、**单元覆盖率 Gate PASS**
+详见 [phase-log](phase-log.md)。Shadow 已在窗口内持续记账；P2 可与 Shadow 积累并行（事实上监控/多 Agent 基建已开工）。
 
 ## 9. MVP 之后的第一件事
 
