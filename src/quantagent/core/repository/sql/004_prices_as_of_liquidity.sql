@@ -1,4 +1,6 @@
 -- Extend get_prices_as_of with liquidity / prev_close columns for factors + reports.
+-- Adjust factors are sparse (ex-div dates); apply last factor with trade_date <= bar date
+-- (BaoStock 涨跌幅复权：前复权价 = 不复权价 * foreAdjustFactor as-of).
 -- Caller must DROP the old signature first when changing OUT columns.
 
 CREATE OR REPLACE FUNCTION get_prices_as_of(
@@ -58,7 +60,14 @@ CREATE OR REPLACE FUNCTION get_prices_as_of(
         p.is_limit_down,
         p.is_suspended
     FROM price_daily p
-    LEFT JOIN af f USING (security_id, trade_date)
+    LEFT JOIN LATERAL (
+        SELECT af.factor_qfq, af.factor_hfq
+        FROM af
+        WHERE af.security_id = p.security_id
+          AND af.trade_date <= p.trade_date
+        ORDER BY af.trade_date DESC
+        LIMIT 1
+    ) f ON TRUE
     WHERE p.security_id = ANY(p_security_ids)
       AND p.trade_date BETWEEN p_start AND p_end
       AND p.trade_date <= p_as_of::date

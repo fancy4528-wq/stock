@@ -8,6 +8,7 @@ from quantagent.data.loaders.financial import FinancialLoader
 from quantagent.data.loaders.industry import IndustryLoader
 from quantagent.data.loaders.news import NewsLoader
 from quantagent.data.loaders.price import PriceLoader
+from quantagent.data.loaders.valuation import ValuationLoader
 
 __all__ = [
     "AdjustLoader",
@@ -18,4 +19,5 @@ __all__ = [
     "IndustryLoader",
     "NewsLoader",
     "PriceLoader",
+    "ValuationLoader",
 ]

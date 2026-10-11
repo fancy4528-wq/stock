@@ -39,15 +39,25 @@ def _run_evaluate(
     panel_path: Path | None,
     factors_arg: str | None,
     synthetic: bool,
+    from_db: bool,
     compute: bool,
     horizon: int,
     n_quantiles: int,
     out_dir: Path,
+    universe: str = "mvp_cn_50",
+    start: date | None = None,
+    end: date | None = None,
+    as_of: date | None = None,
+    export_panel: Path | None = None,
 ) -> int:
     import polars as pl
 
     from quantagent.quant.evaluation import (
+        cast_panel_floats,
+        codes_for_real_l1,
         evaluate_factors,
+        export_l1_price_panel,
+        load_l1_factor_input,
         run_l1_pipeline,
         synthetic_l1_eval_panel,
         write_factor_reports,
@@ -55,27 +65,83 @@ def _run_evaluate(
     from quantagent.quant.features.base import FactorInput
     from quantagent.quant.features.registry import ALL_FACTOR_CODES, L1_SYNTHETIC_CODES
 
-    factor_cols: list[str]
+    modes = sum([synthetic, from_db, panel_path is not None])
+    if modes > 1:
+        print(
+            "evaluate: use only one of --synthetic / --from-db / --panel",
+            file=sys.stderr,
+        )
+        return 2
+    if modes == 0:
+        print(
+            "evaluate: require --synthetic, --from-db, or --panel",
+            file=sys.stderr,
+        )
+        return 2
+
+    factor_cols: list[str] | None
     if factors_arg:
         factor_cols = [c.strip() for c in factors_arg.split(",") if c.strip()]
     else:
-        factor_cols = list(L1_SYNTHETIC_CODES)
+        factor_cols = None
 
-    if synthetic or panel_path is None:
-        if panel_path is not None:
-            print("evaluate: ignoring --panel because --synthetic was set", file=sys.stderr)
-        panel = synthetic_l1_eval_panel(codes=factor_cols)
+    if synthetic:
+        codes = factor_cols if factor_cols is not None else list(L1_SYNTHETIC_CODES)
+        panel = synthetic_l1_eval_panel(codes=codes)
         print(
-            f"market={market} mode=synthetic l1_factors={len(factor_cols)} rows={panel.height}"
+            f"market={market} mode=synthetic l1_factors={len(codes)} rows={panel.height}"
         )
         results = evaluate_factors(
             panel,
-            factor_cols,
+            codes,
+            horizon=horizon,
+            n_quantiles=n_quantiles,
+        )
+    elif from_db:
+        start_d = start or date(2015, 1, 1)
+        end_d = end or as_of
+        if end_d is None:
+            # Latest trade date in DB for CN calendar / prices.
+            engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                raw_max = conn.execute(text("SELECT max(trade_date) FROM price_daily")).scalar()
+            if raw_max is None:
+                print("evaluate: price_daily is empty; run make backfill-10y", file=sys.stderr)
+                return 2
+            end_d = raw_max if isinstance(raw_max, date) else date.fromisoformat(str(raw_max)[:10])
+        as_of_d = as_of or end_d
+        data = load_l1_factor_input(
+            universe=universe,
+            start=start_d,
+            end=end_d,
+            as_of=as_of_d,
+        )
+        if export_panel is not None:
+            export_l1_price_panel(data, export_panel)
+            print(f"evaluate: exported price panel → {export_panel}")
+        codes, skipped = codes_for_real_l1(data, codes=factor_cols)
+        if skipped:
+            print(
+                f"evaluate: skipping value factors (no valuation_daily / pe-pb-ps): "
+                f"{', '.join(skipped)}",
+                file=sys.stderr,
+            )
+        meta = data.meta
+        print(
+            f"market={market} mode=db+compute universe={universe} "
+            f"rows={meta.get('n_rows')} names={meta.get('n_symbols')} "
+            f"start={meta.get('start')} end={meta.get('end')} "
+            f"factors={len(codes)} has_valuation={meta.get('has_valuation')}"
+        )
+        results = run_l1_pipeline(
+            data,
+            codes=codes,
             horizon=horizon,
             n_quantiles=n_quantiles,
         )
     else:
-        panel = pl.read_parquet(panel_path)
+        assert panel_path is not None
+        panel = cast_panel_floats(pl.read_parquet(panel_path))
         skip = {
             "security_id",
             "symbol",
@@ -90,45 +156,76 @@ def _run_evaluate(
             "pe_ttm",
             "pb",
             "ps_ttm",
+            "prev_close",
+            "is_limit_up",
+            "is_limit_down",
+            "is_suspended",
         }
         if compute:
-            as_of = panel["trade_date"].max()
-            if as_of is None:
+            as_of_panel = panel["trade_date"].max()
+            if as_of_panel is None:
                 print("evaluate: panel has no trade_date", file=sys.stderr)
                 return 2
-            from datetime import date as date_cls
-
-            if not isinstance(as_of, date_cls):
-                as_of = date_cls.fromisoformat(str(as_of)[:10])
-            codes = factor_cols if factors_arg else list(ALL_FACTOR_CODES)
+            if not isinstance(as_of_panel, date):
+                as_of_panel = date.fromisoformat(str(as_of_panel)[:10])
+            data = FactorInput(prices=panel, as_of=as_of_panel)
+            codes, skipped = codes_for_real_l1(
+                data,
+                codes=factor_cols if factor_cols is not None else list(ALL_FACTOR_CODES),
+            )
+            if skipped:
+                print(
+                    f"evaluate: skipping value factors: {', '.join(skipped)}",
+                    file=sys.stderr,
+                )
             print(
                 f"market={market} mode=parquet+compute rows={panel.height} factors={len(codes)}"
             )
             results = run_l1_pipeline(
-                FactorInput(prices=panel, as_of=as_of),
+                data,
                 codes=codes,
                 horizon=horizon,
                 n_quantiles=n_quantiles,
             )
         else:
-            if factors_arg:
-                factor_cols = [c.strip() for c in factors_arg.split(",") if c.strip()]
+            if factor_cols is not None:
+                codes = factor_cols
             else:
-                factor_cols = [
+                codes = [
                     c for c in panel.columns if c not in skip and not c.startswith("fwd_")
                 ]
-            if not factor_cols:
+            if not codes:
                 print("evaluate: no factor columns found; try --compute", file=sys.stderr)
                 return 2
-            print(f"market={market} mode=parquet rows={panel.height} factors={factor_cols}")
+            print(f"market={market} mode=parquet rows={panel.height} factors={codes}")
             results = evaluate_factors(
                 panel,
-                factor_cols,
+                codes,
                 horizon=horizon,
                 n_quantiles=n_quantiles,
             )
 
-    paths = write_factor_reports(results, out_dir)
+    report_notes: list[str] = []
+    if synthetic:
+        report_notes.append("Panel: built-in synthetic OHLCV (not market data).")
+    elif from_db:
+        report_notes.append(
+            f"Panel: Postgres `price_daily` via PIT `get_prices_as_of` "
+            f"(universe={universe}, start={start or date(2015, 1, 1)}, "
+            f"end={end or as_of or 'max(trade_date)'})."
+        )
+        report_notes.append(
+            "Value factors use `valuation_daily` when present "
+            "(otherwise ep_ttm / bp / sp_ttm are skipped)."
+        )
+        report_notes.append(
+            "Prices via PIT qfq: last `adjust_factor` with trade_date ≤ bar "
+            "(factor=1 when none)."
+        )
+    elif panel_path is not None:
+        report_notes.append(f"Panel: parquet `{panel_path}` (compute={compute}).")
+
+    paths = write_factor_reports(results, out_dir, notes=report_notes)
     n_pass = sum(1 for r in results.values() if r.admission_pass)
     for code, r in results.items():
         status = "PASS" if r.admission_pass else "FAIL"
@@ -155,6 +252,27 @@ def _load_adjust(df: object, *, source: str, raw_path: Path | None, target_date:
     )
     print(
         f"loaded adjust_factor batch_id={result['batch_id']} rows={result['rows_loaded']} "
+        f"status={result['status']}"
+    )
+
+
+def _load_valuation(
+    df: object, *, source: str, raw_path: Path | None, target_date: date
+) -> None:
+    import polars as pl
+
+    from quantagent.data.loaders import ValuationLoader
+
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError("df must be a polars DataFrame")
+    result = ValuationLoader().load(
+        df,
+        source=source,
+        raw_path=raw_path,
+        target_date=target_date,
+    )
+    print(
+        f"loaded valuation_daily batch_id={result['batch_id']} rows={result['rows_loaded']} "
         f"status={result['status']}"
     )
 
@@ -950,6 +1068,30 @@ async def _ingest_adjust_factor(
         _load_adjust(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
 
 
+async def _ingest_valuation(
+    *,
+    symbols: list[str],
+    start: date,
+    end: date,
+    archive_root: Path | None,
+    load: bool,
+) -> None:
+    from quantagent.data.collectors.baostock import BaostockValuationCollector
+    from quantagent.data.normalizers.valuation import ValuationNormalizer
+
+    collector = BaostockValuationCollector(archive_root=archive_root)
+    batch = await collector.collect(end, symbols=symbols, start=start, end=end)
+    df = ValuationNormalizer().normalize(batch)
+    print(
+        f"collected source={batch.source} dataset={batch.dataset} batch_id={batch.batch_id} "
+        f"rows_raw={batch.row_count} rows_norm={df.height} path={batch.raw_path}"
+    )
+    if df.height:
+        print(df.select(["symbol", "trade_date", "pe_ttm", "pb", "ps_ttm"]).head(3))
+    if load and df.height:
+        _load_valuation(df, source=batch.source, raw_path=batch.raw_path, target_date=end)
+
+
 async def _ingest_financials(
     *,
     symbols: list[str],
@@ -1356,6 +1498,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=(
             "price_daily",
             "adjust_factor",
+            "valuation_daily",
             "financial_statement",
             "index",
             "security_industry",
@@ -1449,12 +1592,46 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument(
         "--factors",
         default=None,
-        help="Comma-separated factor codes (default: all L1 synthetic / ALL when --compute)",
+        help="Comma-separated factor codes (default: all runnable for the mode)",
     )
     ev.add_argument(
         "--synthetic",
         action="store_true",
         help="Evaluate built-in synthetic OHLCV panel (no DB; compute + L1 admit)",
+    )
+    ev.add_argument(
+        "--from-db",
+        action="store_true",
+        help="Load mvp universe prices from Postgres (PIT get_prices_as_of) then L1",
+    )
+    ev.add_argument(
+        "--universe",
+        default="mvp_cn_50",
+        help="Universe code for --from-db (default: mvp_cn_50)",
+    )
+    ev.add_argument(
+        "--start",
+        type=_parse_date,
+        default=None,
+        help="Panel start date for --from-db (default: 2015-01-01)",
+    )
+    ev.add_argument(
+        "--end",
+        type=_parse_date,
+        default=None,
+        help="Panel end date for --from-db (default: max price_daily.trade_date)",
+    )
+    ev.add_argument(
+        "--as-of",
+        type=_parse_date,
+        default=None,
+        help="PIT as_of for --from-db (default: --end)",
+    )
+    ev.add_argument(
+        "--export-panel",
+        type=Path,
+        default=None,
+        help="Optional parquet path to cache the DB price panel",
     )
     ev.add_argument(
         "--compute",
@@ -1871,11 +2048,17 @@ def main(argv: list[str] | None = None) -> int:
             market=args.market,
             panel_path=args.panel,
             factors_arg=args.factors,
-            synthetic=args.synthetic,
+            synthetic=bool(args.synthetic),
+            from_db=bool(getattr(args, "from_db", False)),
             compute=bool(getattr(args, "compute", False)),
             horizon=args.horizon,
             n_quantiles=args.quantiles,
             out_dir=args.out,
+            universe=str(getattr(args, "universe", "mvp_cn_50")),
+            start=getattr(args, "start", None),
+            end=getattr(args, "end", None),
+            as_of=getattr(args, "as_of", None),
+            export_panel=getattr(args, "export_panel", None),
         )
 
     if args.command == "portfolio":
@@ -2133,6 +2316,29 @@ def main(argv: list[str] | None = None) -> int:
                 start, end = args.start, args.end
             asyncio.run(
                 _ingest_adjust_factor(
+                    symbols=symbols,
+                    start=start,
+                    end=end,
+                    archive_root=args.archive_root,
+                    load=args.load,
+                )
+            )
+            return 0
+
+        if args.dataset == "valuation_daily":
+            if args.daily:
+                today = date.today()
+                start = end = today
+            elif args.start is None or args.end is None:
+                print(
+                    "valuation_daily ingest requires --start/--end or --daily",
+                    file=sys.stderr,
+                )
+                return 2
+            else:
+                start, end = args.start, args.end
+            asyncio.run(
+                _ingest_valuation(
                     symbols=symbols,
                     start=start,
                     end=end,

@@ -39,24 +39,40 @@ def daily_ic_series(
     date_col: str = "trade_date",
     min_names: int = 3,
 ) -> pl.DataFrame:
-    """Return ``trade_date, ic`` for each cross-section with enough names."""
+    """Return ``trade_date, ic`` for each cross-section with enough names.
+
+    Uses Polars ``corr(..., method='spearman')`` per date (vectorized). Dates with
+    fewer than ``min_names`` finite pairs, or zero variance in either series, are
+    dropped (null IC).
+    """
     for c in (factor_col, return_col, date_col):
         if c not in panel.columns:
             raise EvaluationError(f"panel missing column: {c}")
 
-    rows: list[dict[str, object]] = []
-    for (td,), g in panel.group_by(date_col, maintain_order=True):
-        clean = g.select([factor_col, return_col]).drop_nulls()
-        if clean.height < min_names:
-            continue
-        ic = cross_sectional_spearman(clean[factor_col], clean[return_col])
-        if ic is None:
-            continue
-        rows.append({date_col: td, "ic": ic})
-
-    if not rows:
+    clean = panel.select([date_col, factor_col, return_col]).drop_nulls()
+    if clean.is_empty():
         return pl.DataFrame(schema={date_col: pl.Date, "ic": pl.Float64})
-    return pl.DataFrame(rows).sort(date_col)
+
+    # Guard zero-variance cross-sections so corr doesn't emit noisy NaNs.
+    agg = (
+        clean.group_by(date_col, maintain_order=True)
+        .agg(
+            pl.len().alias("_n"),
+            pl.col(factor_col).std().alias("_sx"),
+            pl.col(return_col).std().alias("_sy"),
+            pl.corr(factor_col, return_col, method="spearman").alias("ic"),
+        )
+        .filter(
+            (pl.col("_n") >= min_names)
+            & (pl.col("_sx") > 1e-15)
+            & (pl.col("_sy") > 1e-15)
+            & pl.col("ic").is_not_null()
+            & pl.col("ic").is_not_nan()
+        )
+        .select([date_col, "ic"])
+        .sort(date_col)
+    )
+    return agg
 
 
 def summarize_ic(ics: pl.Series | list[float]) -> ICSummary:

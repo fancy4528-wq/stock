@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-universe-monthly features evaluate portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly features evaluate evaluate-real evaluate-synthetic portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -30,6 +30,12 @@ ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
 backfill-10y: ## Gate1：逐标的回填 10 年日线（可断点续跑）+ 完整性审计
 	uv run python -u scripts/backfill_prices_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
 	uv run python -u scripts/audit_price_completeness.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+
+backfill-adjust-10y: ## P3：回填复权因子（baostock query_adjust_factor）
+	uv run python -u scripts/backfill_adjust_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+
+backfill-valuation-10y: ## P3：回填估值 pe/pb/ps（baostock 日线字段）
+	uv run python -u scripts/backfill_valuation_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
 
 backfill-universe-monthly: ## Gate1：月度 universe_snapshot 历史回填（需先有日历+行情入库）
 	uv run python -u scripts/backfill_universe_snapshots.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY) --force
@@ -108,8 +114,13 @@ monitor-funnel-replay: ## Gate 2b：历史交易日回放 L1/L2/L3 漏斗并写�
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN
 
-evaluate:       ## L1 因子 IC/分层准入（synthetic 全量注册因子 → docs/factor-reports）
-	uv run python -m quantagent.cli evaluate --synthetic --out docs/factor-reports
+evaluate: evaluate-real ## L1 因子准入（默认真实 DB 面板 → docs/factor-reports）
+
+evaluate-real:  ## Gate3：从 Postgres 拉 mvp_cn_50 行情跑 L1（需 backfill-10y）
+	uv run python -m quantagent.cli evaluate --from-db --universe mvp_cn_50 --start 2015-01-01 --out docs/factor-reports --export-panel data/panels/l1_mvp_cn_50.parquet
+
+evaluate-synthetic: ## L1 合成面板（无 DB，CI / 离线）
+	uv run python -m quantagent.cli evaluate --synthetic --out docs/factor-reports-synthetic
 
 portfolio:      ## 等权 Top-N + 风控 demo（synthetic，无 DB）
 	uv run python -m quantagent.cli portfolio --market CN
