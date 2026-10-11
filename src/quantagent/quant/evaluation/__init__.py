@@ -17,8 +17,11 @@ from quantagent.quant.evaluation.runner import (
     evaluate_factor,
     evaluate_factors,
     passes_admission,
+    run_l1_pipeline,
     synthetic_eval_panel,
+    synthetic_l1_eval_panel,
     synthetic_mvp_eval_panel,
+    synthetic_price_panel,
 )
 from quantagent.quant.evaluation.types import FactorTestResult, ICSummary, QuantileSummary
 
@@ -35,9 +38,12 @@ __all__ = [
     "passes_admission",
     "quantile_analysis",
     "render_factor_report",
+    "run_l1_pipeline",
     "summarize_ic",
     "synthetic_eval_panel",
+    "synthetic_l1_eval_panel",
     "synthetic_mvp_eval_panel",
+    "synthetic_price_panel",
     "write_factor_report",
     "write_factor_reports",
 ]

@@ -39,6 +39,7 @@ def _run_evaluate(
     panel_path: Path | None,
     factors_arg: str | None,
     synthetic: bool,
+    compute: bool,
     horizon: int,
     n_quantiles: int,
     out_dir: Path,
@@ -47,17 +48,32 @@ def _run_evaluate(
 
     from quantagent.quant.evaluation import (
         evaluate_factors,
-        synthetic_mvp_eval_panel,
+        run_l1_pipeline,
+        synthetic_l1_eval_panel,
         write_factor_reports,
     )
-    from quantagent.quant.features.registry import MVP_FACTOR_CODES
+    from quantagent.quant.features.base import FactorInput
+    from quantagent.quant.features.registry import ALL_FACTOR_CODES, L1_SYNTHETIC_CODES
+
+    factor_cols: list[str]
+    if factors_arg:
+        factor_cols = [c.strip() for c in factors_arg.split(",") if c.strip()]
+    else:
+        factor_cols = list(L1_SYNTHETIC_CODES)
 
     if synthetic or panel_path is None:
         if panel_path is not None:
             print("evaluate: ignoring --panel because --synthetic was set", file=sys.stderr)
-        panel = synthetic_mvp_eval_panel()
-        factor_cols = list(MVP_FACTOR_CODES)
-        print(f"market={market} mode=synthetic mvp_factors={len(factor_cols)} rows={panel.height}")
+        panel = synthetic_l1_eval_panel(codes=factor_cols)
+        print(
+            f"market={market} mode=synthetic l1_factors={len(factor_cols)} rows={panel.height}"
+        )
+        results = evaluate_factors(
+            panel,
+            factor_cols,
+            horizon=horizon,
+            n_quantiles=n_quantiles,
+        )
     else:
         panel = pl.read_parquet(panel_path)
         skip = {
@@ -71,30 +87,56 @@ def _run_evaluate(
             "volume",
             "amount",
             "turnover_rate",
+            "pe_ttm",
+            "pb",
+            "ps_ttm",
         }
-        if factors_arg:
-            factor_cols = [c.strip() for c in factors_arg.split(",") if c.strip()]
-        else:
-            factor_cols = [c for c in panel.columns if c not in skip and not c.startswith("fwd_")]
-        if not factor_cols:
-            print("evaluate: no factor columns found in panel", file=sys.stderr)
-            return 2
-        print(f"market={market} mode=parquet rows={panel.height} factors={factor_cols}")
+        if compute:
+            as_of = panel["trade_date"].max()
+            if as_of is None:
+                print("evaluate: panel has no trade_date", file=sys.stderr)
+                return 2
+            from datetime import date as date_cls
 
-    results = evaluate_factors(
-        panel,
-        factor_cols,
-        horizon=horizon,
-        n_quantiles=n_quantiles,
-    )
+            if not isinstance(as_of, date_cls):
+                as_of = date_cls.fromisoformat(str(as_of)[:10])
+            codes = factor_cols if factors_arg else list(ALL_FACTOR_CODES)
+            print(
+                f"market={market} mode=parquet+compute rows={panel.height} factors={len(codes)}"
+            )
+            results = run_l1_pipeline(
+                FactorInput(prices=panel, as_of=as_of),
+                codes=codes,
+                horizon=horizon,
+                n_quantiles=n_quantiles,
+            )
+        else:
+            if factors_arg:
+                factor_cols = [c.strip() for c in factors_arg.split(",") if c.strip()]
+            else:
+                factor_cols = [
+                    c for c in panel.columns if c not in skip and not c.startswith("fwd_")
+                ]
+            if not factor_cols:
+                print("evaluate: no factor columns found; try --compute", file=sys.stderr)
+                return 2
+            print(f"market={market} mode=parquet rows={panel.height} factors={factor_cols}")
+            results = evaluate_factors(
+                panel,
+                factor_cols,
+                horizon=horizon,
+                n_quantiles=n_quantiles,
+            )
+
     paths = write_factor_reports(results, out_dir)
+    n_pass = sum(1 for r in results.values() if r.admission_pass)
     for code, r in results.items():
         status = "PASS" if r.admission_pass else "FAIL"
         print(
             f"  {code:24s}  ic={r.ic_mean:+.4f}  icir={r.icir:+.3f}  "
             f"t={r.ic_t_stat:+.2f}  admission={status}"
         )
-    print(f"wrote {len(paths)} files under {out_dir}")
+    print(f"L1 admission PASS {n_pass}/{len(results)}; wrote {len(paths)} files under {out_dir}")
     return 0
 
 
@@ -1379,35 +1421,45 @@ def main(argv: list[str] | None = None) -> int:
     )
     bt.add_argument("--market", default=None)
 
-    feat = sub.add_parser("features", help="List / describe MVP factors (W5)")
+    feat = sub.add_parser("features", help="List / describe registered factors (P1+P3)")
     feat.add_argument("--market", default="CN")
     feat.add_argument(
         "--list",
         action="store_true",
         default=True,
-        help="Print registered MVP factor codes (default)",
+        help="Print registered factor codes (default)",
+    )
+    feat.add_argument(
+        "--mvp-only",
+        action="store_true",
+        help="Only list the original 8 MVP factors",
     )
 
     ev = sub.add_parser(
         "evaluate",
-        help="Factor IC / quantile evaluation + markdown reports (W6)",
+        help="L1 factor IC / quantile evaluation + markdown reports (P3)",
     )
     ev.add_argument("--market", default="CN")
     ev.add_argument(
         "--panel",
         type=Path,
         default=None,
-        help="Parquet panel with trade_date, close, and factor columns",
+        help="Parquet panel with trade_date, close, and optional factor columns",
     )
     ev.add_argument(
         "--factors",
         default=None,
-        help="Comma-separated factor columns (default: all non-price cols, or demo)",
+        help="Comma-separated factor codes (default: all L1 synthetic / ALL when --compute)",
     )
     ev.add_argument(
         "--synthetic",
         action="store_true",
-        help="Evaluate built-in synthetic panel (no DB; writes demo reports)",
+        help="Evaluate built-in synthetic OHLCV panel (no DB; compute + L1 admit)",
+    )
+    ev.add_argument(
+        "--compute",
+        action="store_true",
+        help="Compute registered factors from price columns before evaluation",
     )
     ev.add_argument("--horizon", type=int, default=5, help="Forward-return horizon (days)")
     ev.add_argument("--quantiles", type=int, default=5)
@@ -1800,12 +1852,16 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "features":
-        from quantagent.quant.features import MVP_FACTORS
+        from quantagent.quant.features import ALL_FACTORS, MVP_FACTORS, list_factors
 
-        print(f"market={args.market} mvp_factors={len(MVP_FACTORS)}")
-        for code, factor in MVP_FACTORS.items():
+        catalog = MVP_FACTORS if getattr(args, "mvp_only", False) else ALL_FACTORS
+        print(f"market={args.market} factors={len(catalog)}")
+        for factor in list_factors():
+            if factor.code not in catalog:
+                continue
+            tag = "mvp" if factor.code in MVP_FACTORS else "p3"
             print(
-                f"  {code:24s}  category={factor.category:12s}  "
+                f"  {factor.code:24s}  [{tag}]  category={factor.category:12s}  "
                 f"lookback={factor.lookback_days:3d}  v={factor.version}  - {factor.name}"
             )
         return 0
@@ -1816,6 +1872,7 @@ def main(argv: list[str] | None = None) -> int:
             panel_path=args.panel,
             factors_arg=args.factors,
             synthetic=args.synthetic,
+            compute=bool(getattr(args, "compute", False)),
             horizon=args.horizon,
             n_quantiles=args.quantiles,
             out_dir=args.out,

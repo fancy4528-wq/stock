@@ -128,6 +128,34 @@ def ep_from_pe(pe: pl.Expr) -> pl.Expr:
     return pl.when(pe.is_not_null() & (pe != 0)).then(1.0 / pe).otherwise(None)
 
 
+def _inv_multiple(col: pl.Expr) -> pl.Expr:
+    """1 / valuation multiple; null when missing or zero."""
+    return pl.when(col.is_not_null() & (col != 0)).then(1.0 / col).otherwise(None)
+
+
+def _series_from_valuation_or_price(
+    prices: pl.DataFrame,
+    data: FactorInput,
+    *,
+    val_col: str,
+    code: str,
+) -> pl.Series:
+    """Resolve ``1/multiple`` from valuations join, else prices column."""
+    ent = entity_col(prices)
+    if data.valuations is not None and not data.valuations.is_empty():
+        val = data.valuations
+        require_columns(val, [ent, "trade_date", val_col], context="valuations")
+        joined = prices.join(
+            val.select([ent, "trade_date", val_col]),
+            on=[ent, "trade_date"],
+            how="left",
+        )
+        return joined.select(_inv_multiple(pl.col(val_col)).alias("_v")).get_column("_v")
+    if val_col in prices.columns:
+        return prices.select(_inv_multiple(pl.col(val_col)).alias("_v")).get_column("_v")
+    raise FactorError(f"{code} requires valuations.{val_col} or prices.{val_col}")
+
+
 class EpTtm(Factor):
     """Earnings yield (1 / PE_TTM).
 
@@ -175,6 +203,32 @@ class EpTtm(Factor):
             .otherwise(None)
             .alias("_ep")
         ).get_column("_ep")
+
+
+class Bp(Factor):
+    """Book yield = 1 / PB."""
+
+    code = "bp"
+    name = "book-to-price"
+    category = "value"
+    lookback_days = 0
+    required_columns = ["close"]
+
+    def _compute(self, prices: pl.DataFrame, data: FactorInput) -> pl.Series:
+        return _series_from_valuation_or_price(prices, data, val_col="pb", code=self.code)
+
+
+class SpTtm(Factor):
+    """Sales yield = 1 / PS_TTM."""
+
+    code = "sp_ttm"
+    name = "sales yield TTM"
+    category = "value"
+    lookback_days = 0
+    required_columns = ["close"]
+
+    def _compute(self, prices: pl.DataFrame, data: FactorInput) -> pl.Series:
+        return _series_from_valuation_or_price(prices, data, val_col="ps_ttm", code=self.code)
 
 
 def compute_ep_ttm_pit(
