@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from quantagent.agents._heuristic import evidence
 from quantagent.agents.base import AgentContext, Evidence
 from quantagent.agents.llm.structured import ResearchLlmBundle, complete_research_model
 from quantagent.agents.schemas.views import (
     AllocationStance,
+    ChiefRefinePatch,
     Disagreement,
     InputsSummary,
     MacroView,
@@ -44,36 +45,46 @@ class ChiefAgent:
         if self._llm is None or not self._llm.enabled():
             return heuristic
 
-        inject = {
-            "as_of": ctx.as_of.isoformat(),
-            "run_id": ctx.run_id,
-            "sector_ranking": [
-                r.model_dump(mode="json") for r in heuristic.sector_ranking
-            ],
-            "stock_ranking": [r.model_dump(mode="json") for r in heuristic.stock_ranking],
-            "inputs_summary": heuristic.inputs_summary.model_dump(mode="json"),
-            "evidence": [e.model_dump(mode="json") for e in heuristic.evidence],
-        }
-        refined = await complete_research_model(
+        # LLM only emits prose fields; rankings/evidence stay on the heuristic.
+        # Hard cap output — large essays / full MarketBrief rewrites truncate.
+        patch = await complete_research_model(
             self._llm,
             agent=self.name,
             tier=self.tier,
             prompt_name="chief",
-            user_payload={"scaffold": heuristic.model_dump(mode="json")},
+            user_payload={"scaffold": _compact_scaffold(heuristic)},
             run_id=ctx.run_id,
-            model_cls=MarketBrief,
-            inject=inject,
+            model_cls=ChiefRefinePatch,
             repair_hint="retry",
+            max_tokens_out=1024,
             user_prefix=(
-                "在 scaffold MarketBrief 基础上 refinement"
-                "（market_summary / regime_note / allocation rationale / uncertainties）；"
-                "保留 ranking 与 evidence；allocation_stance 只给方向不给权重；仅输出 JSON：\n"
+                "在 scaffold 基础上 refinement 叙事字段"
+                "（market_summary≤600 / regime_note≤300 / allocation_stance / "
+                "disagreements / key_uncertainties / watchlist）；"
+                "不要输出 ranking、evidence、as_of、run_id、regime、inputs_summary；"
+                "allocation_stance 只给方向不给权重；字符串遵守 max_length；"
+                "仅输出精简 ChiefRefinePatch JSON，示例："
+                '{"market_summary":"…","regime_note":"…",'
+                '"allocation_stance":{"equity_stance":"cautious","rationale":"…",'
+                '"preferred_sectors":["801080"],"avoid_sectors":[]},'
+                '"disagreements":[],"key_uncertainties":["…"],'
+                '"watchlist":[{"sector_code":"801080","reason":"…","trigger":"…"}]}：\n'
             ),
         )
-        if refined is None:
+        if patch is None:
             return heuristic
-        require_evidence(refined.evidence, min_count=1)
-        return validate_model(refined)  # type: ignore[return-value]
+        brief = heuristic.model_copy(
+            update={
+                "market_summary": patch.market_summary,
+                "regime_note": patch.regime_note,
+                "allocation_stance": patch.allocation_stance,
+                "disagreements": patch.disagreements,
+                "key_uncertainties": patch.key_uncertainties,
+                "watchlist": patch.watchlist,
+            }
+        )
+        require_evidence(brief.evidence, min_count=1)
+        return validate_model(brief)  # type: ignore[return-value]
 
     def _build_heuristic(self, ctx: AgentContext) -> MarketBrief:
         macro = ctx.upstream.get("macro")
@@ -244,3 +255,41 @@ class ChiefAgent:
         )
         require_evidence(brief.evidence, min_count=1)
         return validate_model(brief)  # type: ignore[return-value]
+
+
+def _compact_scaffold(brief: MarketBrief) -> dict[str, Any]:
+    """Prompt payload without evidence / full ids — rankings as compact rows."""
+    return {
+        "regime": brief.regime,
+        "market_summary": brief.market_summary,
+        "regime_note": brief.regime_note,
+        "allocation_stance": brief.allocation_stance.model_dump(mode="json"),
+        "sector_ranking": [
+            {
+                "rank": r.rank,
+                "sector_code": r.sector_code,
+                "sector_name": r.sector_name,
+                "score": r.score,
+                "one_liner": r.one_liner,
+            }
+            for r in brief.sector_ranking
+        ],
+        "stock_ranking": [
+            {
+                "rank": r.rank,
+                "symbol": r.symbol,
+                "name": r.name,
+                "sector_code": r.sector_code,
+                "score": r.score,
+                "action_hint": r.action_hint,
+                "one_liner": r.one_liner,
+            }
+            for r in brief.stock_ranking
+        ],
+        "disagreements": [d.model_dump(mode="json") for d in brief.disagreements],
+        "key_uncertainties": list(brief.key_uncertainties),
+        "watchlist": [w.model_dump(mode="json") for w in brief.watchlist],
+        "data_quality_note": brief.inputs_summary.data_quality_note,
+        "sector_count": brief.inputs_summary.sector_count,
+        "stock_count": brief.inputs_summary.stock_count,
+    }

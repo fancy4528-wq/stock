@@ -259,3 +259,18 @@ class MarketBrief(BaseModel):
     watchlist: list[WatchItem] = Field(default_factory=list)
     inputs_summary: InputsSummary
     evidence: list[Evidence] = Field(min_length=1)
+
+
+class ChiefRefinePatch(BaseModel):
+    """Prose-only Chief LLM output; rankings/evidence stay on the heuristic brief.
+
+    Keeps completion well under the Chief ``max_tokens_out`` cap (1024) so
+    full MarketBrief regeneration cannot truncate mid-JSON.
+    """
+
+    market_summary: str = Field(max_length=600)
+    regime_note: str = Field(max_length=300)
+    allocation_stance: AllocationStance
+    disagreements: list[Disagreement] = Field(default_factory=list)
+    key_uncertainties: list[str] = Field(min_length=1)
+    watchlist: list[WatchItem] = Field(default_factory=list)

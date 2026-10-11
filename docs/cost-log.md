@@ -166,3 +166,76 @@ run_id=`20260930-cn-daily` mode=`llm_partial` overall=PASS
 | total_usd_vs_daily_cap | $0.0218 | <= $1.50 | PASS |
 | llm_path | llm_partial | llm (not heuristic) | PASS |
 
+| 2026-10-11T08:57:10.650617+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 1004 | 832 | 0.0004 |
+| 2026-10-11T08:57:10.786573+00:00 | 20260930-cn-daily | macro | daily_research | deepseek-flash | llm | 998 | 710 | 0.0003 |
+| 2026-10-11T08:57:11.345137+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 998 | 1002 | 0.0004 |
+| 2026-10-11T08:57:11.378683+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 1059 | 1019 | 0.0004 |
+| 2026-10-11T08:57:11.558092+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 1100 | 1054 | 0.0004 |
+| 2026-10-11T08:57:13.339199+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 2320 | 823 | 0.0006 |
+| 2026-10-11T08:57:14.844126+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 2475 | 993 | 0.0006 |
+| 2026-10-11T08:57:14.863305+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 2612 | 1045 | 0.0007 |
+| 2026-10-11T08:57:18.232868+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1056 | 882 | 0.0004 |
+| 2026-10-11T08:57:18.993653+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1066 | 1132 | 0.0005 |
+| 2026-10-11T08:57:19.180327+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1056 | 1156 | 0.0005 |
+| 2026-10-11T08:57:20.961840+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2382 | 887 | 0.0006 |
+| 2026-10-11T08:57:21.015581+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1056 | 1812 | 0.0007 |
+| 2026-10-11T08:57:22.909088+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2630 | 1147 | 0.0007 |
+| 2026-10-11T08:57:23.255927+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1066 | 1134 | 0.0005 |
+| 2026-10-11T08:57:24.901808+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1070 | 1102 | 0.0005 |
+| 2026-10-11T08:57:25.253352+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 3071 | 1312 | 0.0008 |
+| 2026-10-11T08:57:26.978678+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1070 | 1201 | 0.0005 |
+| 2026-10-11T08:57:27.132001+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2618 | 1125 | 0.0007 |
+| 2026-10-11T08:57:29.925312+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1071 | 1494 | 0.0006 |
+| 2026-10-11T08:57:30.772263+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2681 | 1213 | 0.0007 |
+| 2026-10-11T08:57:33.857880+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2776 | 1290 | 0.0007 |
+| 2026-10-11T08:57:49.880093+00:00 | 20260930-cn-daily | chief | daily_research | deepseek-flash | llm | 2157 | 3562 | 0.0090 |
+| 2026-10-11T08:58:07.062325+00:00 | 20260930-cn-daily | chief | daily_research | deepseek-flash | llm | 4239 | 4096 | 0.0113 |
+
+## Gate 2 research-live (2026-09-30)
+
+run_id=`20260930-cn-daily` mode=`llm_partial` overall=PASS
+
+| Gate 2 | Actual | Threshold | Result |
+|---|---|---|---|
+| schema_pass_rate | 95.8% | >= 95% | PASS |
+| evidence_coverage | 100% | 100% | PASS |
+| pit_violations | 0 | 0 | PASS |
+| avg_untraceable_per_agent | 0.00 | < 1 | PASS |
+| daily_research_usd | $0.0323 | <= $0.80 | PASS |
+| total_usd_vs_daily_cap | $0.0323 | <= $1.50 | PASS |
+| llm_path | llm_partial | llm (not heuristic) | PASS |
+
+| 2026-10-11T09:00:05.290646+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 998 | 826 | 0.0004 |
+| 2026-10-11T09:00:05.500876+00:00 | 20260930-cn-daily | macro | daily_research | deepseek-flash | llm | 998 | 750 | 0.0003 |
+| 2026-10-11T09:00:05.936948+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 1059 | 1007 | 0.0004 |
+| 2026-10-11T09:00:06.481543+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 1100 | 1076 | 0.0005 |
+| 2026-10-11T09:00:06.966563+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 1004 | 1137 | 0.0005 |
+| 2026-10-11T09:00:07.858153+00:00 | 20260930-cn-daily | macro | daily_research | deepseek-flash | llm | 1825 | 706 | 0.0005 |
+| 2026-10-11T09:00:08.099052+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 2121 | 817 | 0.0005 |
+| 2026-10-11T09:00:10.406926+00:00 | 20260930-cn-daily | industry | daily_research | deepseek-flash | llm | 2151 | 993 | 0.0006 |
+| 2026-10-11T09:00:14.488567+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1056 | 1062 | 0.0004 |
+| 2026-10-11T09:00:14.652263+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1056 | 1104 | 0.0005 |
+| 2026-10-11T09:00:14.723399+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1056 | 1230 | 0.0005 |
+| 2026-10-11T09:00:14.888899+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1066 | 1203 | 0.0005 |
+| 2026-10-11T09:00:18.604669+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2170 | 1151 | 0.0006 |
+| 2026-10-11T09:00:18.941843+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1066 | 1167 | 0.0005 |
+| 2026-10-11T09:00:19.089285+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1070 | 1219 | 0.0005 |
+| 2026-10-11T09:00:19.249804+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1070 | 1165 | 0.0005 |
+| 2026-10-11T09:00:22.558537+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 1071 | 1202 | 0.0005 |
+| 2026-10-11T09:00:23.259161+00:00 | 20260930-cn-daily | stock | daily_research | deepseek-flash | llm | 2185 | 1142 | 0.0006 |
+| 2026-10-11T09:00:25.996573+00:00 | 20260930-cn-daily | chief | daily_research | deepseek-flash | llm | 2332 | 566 | 0.0005 |
+
+## Gate 2 research-live (2026-09-30)
+
+run_id=`20260930-cn-daily` mode=`llm` overall=PASS
+
+| Gate 2 | Actual | Threshold | Result |
+|---|---|---|---|
+| schema_pass_rate | 100.0% | >= 95% | PASS |
+| evidence_coverage | 100% | 100% | PASS |
+| pit_violations | 0 | 0 | PASS |
+| avg_untraceable_per_agent | 0.00 | < 1 | PASS |
+| daily_research_usd | $0.0092 | <= $0.80 | PASS |
+| total_usd_vs_daily_cap | $0.0092 | <= $1.50 | PASS |
+| llm_path | llm | llm (not heuristic) | PASS |
+

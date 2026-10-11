@@ -358,6 +358,8 @@ A 股同概念板块内相关性极高，第一条不是理论风险。
 
 ### 3.3 Gate 2 — Agent 质量
 
+**状态（2026-10-11）**: 工程验收通过。live LLM research（`make research-live-accept`）schema/evidence/PIT/成本达标；extraction `rule_v1` 金标 ≥100；详见 [phase-log](phase-log.md)。Gate 2a/2b 观测与 P3 并行。
+
 | 条件 | 阈值 |
 |---|---|
 | Schema 校验通过率 | > 95% |
