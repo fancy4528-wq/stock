@@ -45,7 +45,7 @@ budget:
 
   # 单次调用上限（防单次爆炸）
   per_call_max_tokens_in: 30000
-  per_call_max_tokens_out: 4000
+  per_call_max_tokens_out: 4096
 ```
 
 **分项预算互不挪用**是刻意设计。否则研究流程可能吃掉监控的预算，导致监控失效——而监控的价值密度更高。
@@ -342,7 +342,7 @@ class DegradationNote(BaseModel):
 
 ```yaml
 per_call_max_tokens_in: 30000
-per_call_max_tokens_out: 4000
+per_call_max_tokens_out: 4096
 ```
 
 防止单次调用意外爆炸（如某个工具返回了超大结果集）。超限直接拒绝调用，而非截断后继续——因为截断可能导致模型看到不完整数据得出错误结论。

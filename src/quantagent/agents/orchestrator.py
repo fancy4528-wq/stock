@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from quantagent.agents.base import AgentContext
 from quantagent.agents.chief.agent import ChiefAgent
 from quantagent.agents.llm.budget import DegradationNote, TokenBudget
-from quantagent.agents.llm.metering import CostTracker
+from quantagent.agents.llm.metering import CostRecord, CostTracker
 from quantagent.agents.llm.structured import ResearchLlmBundle
 from quantagent.agents.macro.agent import MacroAgent, neutral_macro_view
 from quantagent.agents.schemas.views import MacroView, MarketBrief, SectorView, StockView
@@ -47,6 +47,9 @@ class OrchestratorResult(BaseModel):
     validations: list[ValidationResult] = []
     validation_fatal_count: int = 0
     untraceable_figure_count: int = 0
+    # Filled by run_research_live for Gate 2 acceptance (not set by Orchestrator alone).
+    llm_enabled: bool = False
+    cost_records: list[CostRecord] = []
 
 
 class Orchestrator:
@@ -499,8 +502,14 @@ async def run_research_live(
         budget=bundle.budget if bundle is not None else None,
     )
     result = await orch.run_daily(facts.as_of, facts.market, facts)
-    if bundle is not None and bundle.costs.records:
-        from pathlib import Path
+    if bundle is not None:
+        result.llm_enabled = bundle.enabled()
+        result.cost_records = list(bundle.costs.records)
+        if bundle.costs.records:
+            from pathlib import Path
 
-        bundle.costs.append_cost_log(Path("docs/cost-log.md"))
+            bundle.costs.append_cost_log(Path("docs/cost-log.md"))
     return result, facts
+
+
+OrchestratorResult.model_rebuild()

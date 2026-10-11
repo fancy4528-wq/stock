@@ -27,6 +27,8 @@ async def complete_with_budget(
     cfg = load_llm_config()
     tcfg = cfg.tier(tier)
     out_cap = max_tokens_out if max_tokens_out is not None else tcfg.max_tokens_out
+    # Never request above the ADR-0010 per-call ceiling (Chief/large was 4096 vs 4000).
+    out_cap = min(out_cap, budget.config.per_call_max_tokens_out)
     est_in = estimate_prompt_tokens(system=system, user=user)
     reservation = budget.check_and_reserve(allocation, est_in, out_cap, tier)
     try:

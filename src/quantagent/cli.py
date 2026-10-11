@@ -448,10 +448,33 @@ def _run_research_live(
     max_industries: int,
     no_knowledge: bool,
     no_llm: bool,
+    require_llm: bool = False,
+    write_acceptance: bool = False,
 ) -> int:
     import asyncio
 
+    from quantagent.agents.llm.client import NullLLMClient
+    from quantagent.agents.llm.factory import build_llm_client
     from quantagent.agents.orchestrator import run_research_live
+    from quantagent.agents.research_acceptance import (
+        append_cost_log_gate2_section,
+        append_research_validation_log,
+        format_gate2_table,
+        summarize_research_acceptance,
+    )
+
+    if require_llm and no_llm:
+        print("research-live: --require-llm conflicts with --no-llm")
+        return 2
+    if require_llm:
+        client = build_llm_client()
+        if isinstance(client, NullLLMClient):
+            print(
+                "research-live: LLM_API_KEY missing/empty; "
+                "refusing heuristic fallback (--require-llm). "
+                "Set LLM_API_KEY in .env (see .env.example)."
+            )
+            return 2
 
     async def _go():
         return await run_research_live(
@@ -469,15 +492,20 @@ def _run_research_live(
         f"industries={len(facts.industries)} stocks={len(facts.stocks)} "
         f"breadth={facts.n_up}:{facts.n_down} index_ret={facts.index_return_1d:+.4f}"
     )
+    summary = summarize_research_acceptance(result, as_of=facts.as_of)
     if result.aborted or result.brief is None:
         print(f"research-live ABORTED: {result.abort_reason}")
+        print(format_gate2_table(summary))
+        if write_acceptance or require_llm:
+            append_research_validation_log(summary)
+            append_cost_log_gate2_section(summary)
         return 1
     brief = result.brief
     print(
         f"research-live brief regime={brief.regime} "
         f"sectors={len(brief.sector_ranking)} stocks={len(brief.stock_ranking)} "
         f"stance={brief.allocation_stance.equity_stance} "
-        f"llm_usd={result.llm_cost_usd:.4f}"
+        f"llm_usd={result.llm_cost_usd:.4f} llm_enabled={result.llm_enabled}"
     )
     if result.skipped_sectors:
         print(f"  skipped_sectors={result.skipped_sectors}")
@@ -500,6 +528,13 @@ def _run_research_live(
             f"  stock#{row.rank} {row.symbol} {row.name} "
             f"score={row.score:.2f} hint={row.action_hint}"
         )
+    print(format_gate2_table(summary))
+    if write_acceptance or require_llm:
+        log_path = append_research_validation_log(summary)
+        append_cost_log_gate2_section(summary)
+        print(f"  acceptance_log={log_path}")
+    if require_llm and not summary.overall_pass():
+        return 1
     return 0
 
 
@@ -1600,6 +1635,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force heuristic-only (ignore LLM_API_KEY)",
     )
+    research_live.add_argument(
+        "--require-llm",
+        action="store_true",
+        help="Fail if LLM_API_KEY missing; write Gate 2 acceptance log",
+    )
+    research_live.add_argument(
+        "--write-acceptance",
+        action="store_true",
+        help="Append docs/research-validation-log.md + Gate 2 cost-log section",
+    )
 
     positions = sub.add_parser(
         "positions",
@@ -1830,6 +1875,8 @@ def main(argv: list[str] | None = None) -> int:
             max_industries=int(args.max_industries),
             no_knowledge=bool(args.no_knowledge),
             no_llm=bool(args.no_llm),
+            require_llm=bool(args.require_llm),
+            write_acceptance=bool(args.write_acceptance),
         )
 
     if args.command == "positions":

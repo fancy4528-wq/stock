@@ -88,6 +88,40 @@ def test_per_call_token_cap_refuses() -> None:
         budget.check_and_reserve("daily_research", 60_000, 10, "medium")
 
 
+def test_repo_llm_yaml_large_tier_can_reserve() -> None:
+    """Regression: large max_tokens_out must fit per_call_max_tokens_out (Chief)."""
+    from quantagent.agents.llm.config import clear_llm_config_cache, load_llm_config
+
+    clear_llm_config_cache()
+    cfg = load_llm_config()
+    large = cfg.tier("large")
+    assert large.max_tokens_out <= cfg.budget.per_call_max_tokens_out
+    budget = TokenBudget(llm_config=cfg)
+    res = budget.check_and_reserve(
+        "daily_research", 2_000, large.max_tokens_out, "large"
+    )
+    assert res.reserved_usd > 0
+    budget.release(res)
+
+
+def test_tier_exceeding_per_call_out_rejected_at_config() -> None:
+    from quantagent.agents.llm.config import BudgetConfig, LLMConfig, TierConfig
+    from quantagent.shared.errors import ConfigError
+
+    with pytest.raises(ConfigError, match="per_call_max_tokens_out"):
+        LLMConfig(
+            tiers={
+                "large": TierConfig(
+                    model="m-large",
+                    max_tokens_out=8_192,
+                    input_usd_per_1m=1.0,
+                    output_usd_per_1m=1.0,
+                )
+            },
+            budget=BudgetConfig(per_call_max_tokens_out=4_096),
+        )
+
+
 def test_release_on_failure_path() -> None:
     budget = TokenBudget(llm_config=_cfg(research=1.0))
     res = budget.check_and_reserve("daily_research", 10, 10, "medium")
