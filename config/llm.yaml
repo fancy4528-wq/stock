@@ -43,4 +43,5 @@ budget:
     news_extraction: skip
     adhoc: abort
   per_call_max_tokens_in: 30000
-  per_call_max_tokens_out: 4000
+  # Must be >= every tier max_tokens_out (large=4096); else Chief/large hard-fails pre-call.
+  per_call_max_tokens_out: 4096

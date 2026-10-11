@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from quantagent.shared.errors import ConfigError
 
@@ -50,7 +50,7 @@ class BudgetConfig(BaseModel):
     allocations: dict[str, float] = Field(default_factory=_default_allocations)
     on_exceed: dict[str, ExceedAction] = Field(default_factory=_default_on_exceed)
     per_call_max_tokens_in: int = Field(default=30_000, gt=0)
-    per_call_max_tokens_out: int = Field(default=4_000, gt=0)
+    per_call_max_tokens_out: int = Field(default=4_096, gt=0)
 
 
 class LLMConfig(BaseModel):
@@ -62,6 +62,17 @@ class LLMConfig(BaseModel):
         if key not in self.tiers:
             raise ConfigError(f"Unknown LLM tier: {name!r}; known={sorted(self.tiers)}")
         return self.tiers[key]
+
+    @model_validator(mode="after")
+    def _tiers_fit_per_call_caps(self) -> Self:
+        out_cap = self.budget.per_call_max_tokens_out
+        for name, tier in self.tiers.items():
+            if tier.max_tokens_out > out_cap:
+                raise ConfigError(
+                    f"tier {name!r} max_tokens_out={tier.max_tokens_out} exceeds "
+                    f"budget.per_call_max_tokens_out={out_cap}"
+                )
+        return self
 
 
 def _repo_root() -> Path:
