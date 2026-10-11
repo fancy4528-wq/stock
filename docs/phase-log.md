@@ -2,6 +2,26 @@
 
 各阶段实际关门记录。模板见 [12-roadmap](12-roadmap.md) 5.1。
 
+## P3 (2026-10-11 ~ )
+
+**Gate 3 状态**: 进行中（真实数据 L1 含复权+估值已重跑，准入仍 0/33，未关门）
+
+**已完成**:
+- 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
+- 真实数据 L1：`make evaluate-real` / `evaluate --from-db`（`mvp_cn_50`，2015-01-01→2026-09-30，135k 行）
+- 回填 `adjust_factor`（717 行）+ `valuation_daily`（~135k 行，baostock pe/pb/ps）
+- 修复 `get_prices_as_of`：稀疏复权因子改为 as-of（`trade_date <=`）LATERAL join（migration `0008`）
+
+**真实 L1（复权+估值后，2026-10-11）**:
+- 评估 **33/33** 因子（含 `ep_ttm`/`bp`/`sp_ttm`）；L1 admission **PASS 0/33**
+- 较接近：`dist_from_high_252d` IC=+0.025 t=+4.5 但 ICIR=0.09≪0.3；`skew_60d` |IC|=0.020 同样卡在 ICIR/方向比
+- 报告见 [factor-reports](factor-reports/README.md)
+
+**下一步（Gate 3）**:
+- 截面中性化 / 更大股票池（50 池 IC 噪声大、ICIR 普遍 <0.1）
+- 或验收标签侧排除涨停/停牌后再评
+- 达标因子 ≥5 后进入 L2 等权 / IC 加权基线
+
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
 **Gate 2 状态**: 工程验收通过（2026-10-11 盘点）

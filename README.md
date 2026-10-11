@@ -79,7 +79,7 @@ make ingest-calendar
 make ingest-universe
 make ingest-daily
 
-# 因子评估、基准回测
+# 因子评估（真实 DB L1；离线可用 make evaluate-synthetic）、基准回测
 make evaluate
 make backtest-baseline
 

@@ -149,6 +149,37 @@ def _pairwise_factor_corr(
     return out
 
 
+def _mean_factor_corr_matrix(
+    panel: pl.DataFrame,
+    factor_cols: list[str],
+    *,
+    date_col: str = "trade_date",
+    min_names: int = 3,
+) -> dict[str, dict[str, float]]:
+    """Mean daily cross-sectional Spearman between every factor pair (upper triangle)."""
+    matrix: dict[str, dict[str, float]] = {c: {} for c in factor_cols}
+    for i, a in enumerate(factor_cols):
+        for b in factor_cols[i + 1 :]:
+            if a not in panel.columns or b not in panel.columns:
+                continue
+            ics = daily_ic_series(
+                panel,
+                factor_col=a,
+                return_col=b,
+                date_col=date_col,
+                min_names=min_names,
+            )
+            if ics.is_empty():
+                continue
+            mean = ics["ic"].mean()
+            if mean is None:
+                continue
+            val = float(mean)  # type: ignore[arg-type]
+            matrix[a][b] = val
+            matrix[b][a] = val
+    return matrix
+
+
 def evaluate_factor(
     panel: pl.DataFrame,
     *,
@@ -161,11 +192,17 @@ def evaluate_factor(
     date_col: str = "trade_date",
     other_factor_cols: list[str] | None = None,
     min_names: int = 5,
+    labeled_panel: pl.DataFrame | None = None,
+    precomputed_correlations: dict[str, float] | None = None,
 ) -> FactorTestResult:
     """Evaluate one factor column on a panel that includes prices + factor.
 
     Panel must include entity (``security_id`` or ``symbol``), ``trade_date``,
     ``close`` (or ``price_col``), and the factor column. Extra columns are kept.
+
+    When evaluating many factors, pass a shared ``labeled_panel`` (with forward
+    returns already attached) and ``precomputed_correlations`` from
+    :func:`evaluate_factors` to avoid O(n²) recomputation.
     """
     factor_col = factor_col or factor_code
     for col, label in (
@@ -177,7 +214,13 @@ def evaluate_factor(
             raise EvaluationError(f"{label} column not in panel: {col}")
 
     horizons = sorted(set([horizon, *decay_horizons]))
-    labeled = attach_forward_returns(panel, horizons=horizons, price_col=price_col)
+    if labeled_panel is not None:
+        labeled = labeled_panel
+        missing_h = [h for h in horizons if forward_return_col(h) not in labeled.columns]
+        if missing_h:
+            labeled = attach_forward_returns(labeled, horizons=missing_h, price_col=price_col)
+    else:
+        labeled = attach_forward_returns(panel, horizons=horizons, price_col=price_col)
     ret_col = forward_return_col(horizon)
     ent = entity_col(labeled)
 
@@ -215,27 +258,30 @@ def evaluate_factor(
     ac = _factor_autocorr(eval_panel, factor_col=factor_col, date_col=date_col)
     turnover_est = float(max(0.0, 1.0 - abs(ac)))
 
-    skip = {
-        ent,
-        date_col,
-        price_col,
-        "open",
-        "high",
-        "low",
-        "volume",
-        "amount",
-        "turnover_rate",
-        factor_col,
-    }
-    others = other_factor_cols or [
-        c for c in panel.columns if c not in skip and not str(c).startswith("fwd_ret_")
-    ]
-    corrs = _pairwise_factor_corr(
-        labeled,
-        factor_col=factor_col,
-        other_cols=others,
-        date_col=date_col,
-    )
+    if precomputed_correlations is not None:
+        corrs = dict(precomputed_correlations)
+    else:
+        skip = {
+            ent,
+            date_col,
+            price_col,
+            "open",
+            "high",
+            "low",
+            "volume",
+            "amount",
+            "turnover_rate",
+            factor_col,
+        }
+        others = other_factor_cols or [
+            c for c in panel.columns if c not in skip and not str(c).startswith("fwd_ret_")
+        ]
+        corrs = _pairwise_factor_corr(
+            labeled,
+            factor_col=factor_col,
+            other_cols=others,
+            date_col=date_col,
+        )
 
     dates = panel[date_col].drop_nulls().to_list()
     if not dates:
@@ -286,8 +332,18 @@ def evaluate_factors(
     min_names: int = 5,
 ) -> dict[str, FactorTestResult]:
     """Evaluate multiple factor columns; each sees the others for correlations."""
+    horizons = sorted(set([horizon, *decay_horizons]))
+    labeled = attach_forward_returns(panel, horizons=horizons, price_col=price_col)
+    corr_matrix = _mean_factor_corr_matrix(
+        labeled,
+        factor_cols,
+        date_col=date_col,
+        min_names=3,
+    )
     results: dict[str, FactorTestResult] = {}
-    for code in factor_cols:
+    n = len(factor_cols)
+    for i, code in enumerate(factor_cols, start=1):
+        print(f"evaluate: [{i}/{n}] {code}", flush=True)
         results[code] = evaluate_factor(
             panel,
             factor_code=code,
@@ -299,6 +355,8 @@ def evaluate_factors(
             date_col=date_col,
             other_factor_cols=[c for c in factor_cols if c != code],
             min_names=min_names,
+            labeled_panel=labeled,
+            precomputed_correlations=corr_matrix.get(code, {}),
         )
     return results
 
