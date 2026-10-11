@@ -2,6 +2,34 @@
 
 各阶段实际关门记录。模板见 [12-roadmap](12-roadmap.md) 5.1。
 
+## P2 (约 2026-09-13 ~ 2026-10-11)
+
+**Gate 2 状态**: 工程验收通过（2026-10-11 盘点）
+
+**实际耗时**: 约 4 周日历（与 P1 观察窗及 P2a/P2b 基建重叠），估算 4–6 周内。
+
+**偏差原因**:
+- live LLM 验收被 `per_call_max_tokens_out=4000` vs `large.max_tokens_out=4096` 卡住，Chief 预调用 `budget_skip`；对齐到 4096 后恢复
+- Chief 曾整份重吐 `MarketBrief` / 使用 `deepseek-reasoner` 烧完 completion，顶满上限致 `schema_fail`；改为 `ChiefRefinePatch` + `deepseek-chat` + `max_tokens_out=1024`
+
+**关键决策**:
+- Gate 2 只验工程质量（schema / evidence / PIT / 可追溯 / 预算），不把 Agent IC 当作关门条件（留给 Gate 4）
+- Research live 路径以 `make research-live-accept` + `docs/research-validation-log.md` / `docs/cost-log.md` 为准
+- 新闻数字提取以 `rule_v1` + `figures_gold` ≥100 回归基线关门；LLM extractor 对照不阻塞 P3
+- P2a/P2b 观测（推送有用率、live L2）与 P3 并行，不阻塞 Quant 开工
+
+**遗留问题**:
+- Gate 2a：连续 20 交易日无漏报 + 推送有用率 >40% 仍在观测
+- Gate 2b：live LLM L2 准确率 / 有用率对比、缓存命中率未收齐；heuristic funnel replay 已记入 `cost-log`
+- Token 经济学清单中批处理最优批大小、结果缓存命中率等 P2b 项未全部勾完
+- （已复核）`make research-live-accept` 应见 `schema_fails=0`；若偶发 JSON 损坏仍回退启发式且 overall 过线
+
+**基线结果**:
+- Live research（as_of=2026-09-30，`require-llm`）：schema_pass ≥95.5%、evidence 100%、PIT 0、untraceable 0、daily_research ≈ $0.012–$0.022 ≪ $0.80；见 `docs/research-validation-log.md`
+- Extraction：`docs/extraction-eval.md` — n=100，soft match 100%（db 68 + synthetic 32）
+- RAG PIT：`search_chunks_as_of` + 单测；K2 report_pack 可 `make ingest-reports`
+- `shadow_agent` 已启动（信号=`MarketBrief.stock_ranking`）
+
 ## P0 + P1 (约 2026-09-02 ~ 2026-09-30)
 
 **Gate 1 状态**: 通过（2026-10-03 盘点）

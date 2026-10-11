@@ -90,6 +90,7 @@ async def complete_research_json(
     user_payload: dict[str, Any],
     run_id: str,
     user_prefix: str | None = None,
+    max_tokens_out: int | None = None,
 ) -> dict[str, Any] | None:
     """Call LLM under ``daily_research`` budget; return parsed dict or ``None``."""
     if not bundle.enabled():
@@ -102,7 +103,13 @@ async def complete_research_json(
     user = prefix + json.dumps(user_payload, ensure_ascii=False, default=str)
 
     try:
-        resp = await _complete_with_degrade(bundle, tier=tier, system=system, user=user)
+        resp = await _complete_with_degrade(
+            bundle,
+            tier=tier,
+            system=system,
+            user=user,
+            max_tokens_out=max_tokens_out,
+        )
     except (BudgetSkip, BudgetExceeded, BudgetDegrade) as exc:
         note = DegradationNote(
             allocation=bundle.allocation,
@@ -169,6 +176,7 @@ async def complete_research_model(
     inject: dict[str, Any] | None = None,
     user_prefix: str | None = None,
     repair_hint: str | None = None,
+    max_tokens_out: int | None = None,
 ) -> TModel | None:
     """Parse LLM JSON into ``model_cls``; one schema-repair retry; else ``None``."""
     raw = await complete_research_json(
@@ -179,6 +187,7 @@ async def complete_research_model(
         user_payload=user_payload,
         run_id=run_id,
         user_prefix=user_prefix,
+        max_tokens_out=max_tokens_out,
     )
     if raw is None:
         return None
@@ -202,10 +211,15 @@ async def complete_research_model(
             )
             return None
 
+        # Keep repair prompt small — re-sending a fat previous object often
+        # pushes the retry into max_tokens_out truncation.
+        prev_compact = json.dumps(raw, ensure_ascii=False, default=str)
+        if len(prev_compact) > 1200:
+            prev_compact = prev_compact[:1200] + "…"
         repair_payload = {
             **user_payload,
             "_validation_error": str(first_exc)[:500],
-            "_previous_json": raw,
+            "_previous_json": prev_compact,
         }
         prefix = (
             (user_prefix or "")
@@ -220,6 +234,7 @@ async def complete_research_model(
             user_payload=repair_payload,
             run_id=run_id,
             user_prefix=prefix,
+            max_tokens_out=max_tokens_out,
         )
         if raw2 is None:
             return None
@@ -247,6 +262,7 @@ async def _complete_with_degrade(
     tier: str,
     system: str,
     user: str,
+    max_tokens_out: int | None = None,
 ) -> LLMResponse:
     try:
         resp, _ = await complete_with_budget(
@@ -256,6 +272,7 @@ async def _complete_with_degrade(
             tier=tier,
             system=system,
             user=user,
+            max_tokens_out=max_tokens_out,
         )
         return resp
     except BudgetDegrade as exc:
@@ -268,6 +285,7 @@ async def _complete_with_degrade(
                 tier=exc.suggested_tier,
                 system=system,
                 user=user,
+                max_tokens_out=max_tokens_out,
             )
             return resp
         except (BudgetDegrade, BudgetSkip, BudgetExceeded):

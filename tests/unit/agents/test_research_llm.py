@@ -164,3 +164,57 @@ async def test_orchestrator_with_echo_llm() -> None:
     assert result.brief is not None
     assert result.brief.regime in {"risk_on", "risk_off", "neutral", "transition"}
     assert result.llm_cost_usd >= 0.0
+
+
+@pytest.mark.asyncio
+async def test_chief_echo_llm_merges_refine_patch() -> None:
+    """Chief LLM path must accept slim ChiefRefinePatch, not full MarketBrief."""
+    from quantagent.agents.chief.agent import ChiefAgent
+    from quantagent.agents.sector.industry import IndustryAgent
+    from quantagent.agents.stock.agent import StockAgent
+
+    facts = sample_research_facts(date(2026, 9, 12))
+    ctx = AgentContext(
+        as_of=facts.as_of, market="CN", run_id="t-chief-patch", token_budget_usd=1.0
+    )
+    macro = await MacroAgent(facts).run(ctx)
+    sector = await IndustryAgent(facts.industries[0]).run(ctx)
+    stock = await StockAgent(facts.stocks[0]).run(ctx)
+    upstream_ctx = ctx.model_copy(
+        update={"upstream": {"macro": macro, "sectors": [sector], "stocks": [stock]}}
+    )
+
+    patch = {
+        "market_summary": "LLM chief summary override for truncation fix",
+        "regime_note": "LLM regime note",
+        "allocation_stance": {
+            "equity_stance": "defensive",
+            "rationale": "echo patch rationale",
+            "preferred_sectors": [sector.sector_code],
+            "avoid_sectors": [],
+        },
+        "disagreements": [],
+        "key_uncertainties": ["echo uncertainty"],
+        "watchlist": [
+            {
+                "sector_code": sector.sector_code,
+                "reason": "echo watch",
+                "trigger": "unit test",
+            }
+        ],
+    }
+    bundle = ResearchLlmBundle(
+        llm=EchoLLMClient(json.dumps(patch, ensure_ascii=False)),
+        budget=TokenBudget(llm_config=_llm_cfg()),
+        costs=CostTracker(),
+    )
+    brief = await ChiefAgent(llm=bundle).run(upstream_ctx)
+    assert brief.market_summary == patch["market_summary"]
+    assert brief.regime_note == "LLM regime note"
+    assert brief.allocation_stance.equity_stance == "defensive"
+    assert brief.key_uncertainties == ["echo uncertainty"]
+    # Ranking / evidence / regime remain heuristic-owned
+    assert brief.regime == macro.regime
+    assert brief.sector_ranking
+    assert brief.evidence
+    assert any(r.mode == "llm" for r in bundle.costs.records)
