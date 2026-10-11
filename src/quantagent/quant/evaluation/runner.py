@@ -19,7 +19,12 @@ from quantagent.quant.evaluation.ic import (
 from quantagent.quant.evaluation.quantile import quantile_analysis
 from quantagent.quant.evaluation.types import FactorTestResult
 from quantagent.quant.features.base import FactorInput, entity_col
-from quantagent.quant.features.registry import MVP_FACTOR_CODES, MVP_FACTORS
+from quantagent.quant.features.compute import build_factor_panel
+from quantagent.quant.features.registry import (
+    ALL_FACTOR_CODES,
+    L1_SYNTHETIC_CODES,
+    MVP_FACTOR_CODES,
+)
 from quantagent.quant.labels.targets import attach_forward_returns, forward_return_col
 
 # docs/07-quant-engine.md §3.2
@@ -362,6 +367,88 @@ def _trading_dates(*, n_dates: int, start: date) -> list[date]:
     return dates
 
 
+def synthetic_price_panel(
+    *,
+    n_dates: int = 280,
+    n_names: int = 40,
+    seed: int = 42,
+    signal_strength: float = 0.2,
+    start: date = date(2023, 1, 3),
+) -> pl.DataFrame:
+    """Synthetic OHLCV + simple valuation multiples (no factor columns)."""
+    rng = np.random.default_rng(seed)
+    dates = _trading_dates(n_dates=n_dates, start=start)
+    rows: list[dict[str, object]] = []
+
+    for sid in range(1, n_names + 1):
+        closes = [100.0 + sid * 0.05]
+        for i in range(1, len(dates)):
+            if i >= 21 and np.isfinite(closes[i - 1]) and np.isfinite(closes[i - 21]):
+                mom = closes[i - 1] / closes[i - 21] - 1.0
+                ret = signal_strength * mom * 0.5 + float(rng.normal(0, 0.015))
+            else:
+                ret = float(rng.normal(0, 0.02))
+            # Keep paths finite over long L1 panels (mom feedback otherwise → inf).
+            ret = float(np.clip(ret, -0.12, 0.12))
+            nxt = closes[-1] * (1.0 + ret)
+            if not np.isfinite(nxt) or nxt <= 1e-6:
+                nxt = closes[-1] * (1.0 + float(rng.normal(0, 0.01)))
+            closes.append(float(np.clip(nxt, 1e-3, 1e6)))
+
+        for i, td in enumerate(dates):
+            close = closes[i]
+            prev = closes[i - 1] if i > 0 else close
+            open_px = prev * (1.0 + float(rng.normal(0, 0.002)))
+            high = max(open_px, close) * (1.0 + abs(float(rng.normal(0, 0.003))))
+            low = min(open_px, close) * (1.0 - abs(float(rng.normal(0, 0.003))))
+            turnover = 0.01 + float(rng.uniform(0, 0.03))
+            volume = 500_000.0 + float(rng.uniform(0, 1_500_000.0))
+            amount = close * volume * turnover / 0.02
+            rows.append(
+                {
+                    "security_id": sid,
+                    "trade_date": td,
+                    "open": open_px,
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "volume": volume,
+                    "amount": amount,
+                    "turnover_rate": turnover,
+                    "pe_ttm": 10.0 + sid * 0.1 + float(rng.uniform(-2, 2)),
+                    "pb": 1.5 + sid * 0.02 + float(rng.uniform(-0.3, 0.3)),
+                    "ps_ttm": 3.0 + sid * 0.05 + float(rng.uniform(-0.5, 0.5)),
+                }
+            )
+
+    return pl.DataFrame(rows).sort(["security_id", "trade_date"])
+
+
+def synthetic_l1_eval_panel(
+    *,
+    n_dates: int = 280,
+    n_names: int = 40,
+    seed: int = 42,
+    signal_strength: float = 0.2,
+    start: date = date(2023, 1, 3),
+    codes: list[str] | tuple[str, ...] | None = None,
+) -> pl.DataFrame:
+    """Build OHLCV panel and compute registered factors for L1 evaluation."""
+    prices = synthetic_price_panel(
+        n_dates=n_dates,
+        n_names=n_names,
+        seed=seed,
+        signal_strength=signal_strength,
+        start=start,
+    )
+    selected = list(codes) if codes is not None else list(L1_SYNTHETIC_CODES)
+    as_of = prices["trade_date"].max()
+    assert isinstance(as_of, date)
+    panel = build_factor_panel(FactorInput(prices=prices, as_of=as_of), codes=selected)
+    keep = ["security_id", "trade_date", "close", *selected]
+    return panel.select([c for c in keep if c in panel.columns])
+
+
 def synthetic_mvp_eval_panel(
     *,
     n_dates: int = 120,
@@ -370,47 +457,38 @@ def synthetic_mvp_eval_panel(
     signal_strength: float = 0.4,
     start: date = date(2024, 1, 2),
 ) -> pl.DataFrame:
-    """Build OHLCV panel and compute all 8 MVP factors for W6 evaluation."""
-    rng = np.random.default_rng(seed)
-    dates = _trading_dates(n_dates=n_dates, start=start)
-    rows: list[dict[str, object]] = []
+    """Backward-compatible MVP-only synthetic panel (P1 W6 / single-factor backtest)."""
+    return synthetic_l1_eval_panel(
+        n_dates=n_dates,
+        n_names=n_names,
+        seed=seed,
+        signal_strength=signal_strength,
+        start=start,
+        codes=MVP_FACTOR_CODES,
+    )
 
-    for sid in range(1, n_names + 1):
-        closes = [100.0 + sid * 0.05]
-        for i in range(1, len(dates)):
-            if i >= 21:
-                mom = closes[i - 1] / closes[i - 21] - 1.0
-                ret = signal_strength * mom * 0.5 + float(rng.normal(0, 0.015))
-            else:
-                ret = float(rng.normal(0, 0.02))
-            closes.append(closes[-1] * (1.0 + ret))
 
-        for i, td in enumerate(dates):
-            close = closes[i]
-            prev = closes[i - 1] if i > 0 else close
-            turnover = 0.01 + float(rng.uniform(0, 0.03))
-            amount = close * 1_000_000.0 * turnover
-            rows.append(
-                {
-                    "security_id": sid,
-                    "trade_date": td,
-                    "open": prev,
-                    "high": max(prev, close) * 1.005,
-                    "low": min(prev, close) * 0.995,
-                    "close": close,
-                    "volume": 1_000_000.0,
-                    "amount": amount,
-                    "turnover_rate": turnover,
-                    "pe_ttm": 10.0 + sid * 0.1 + float(rng.uniform(-2, 2)),
-                }
-            )
+def run_l1_pipeline(
+    data: FactorInput,
+    codes: list[str] | tuple[str, ...] | None = None,
+    *,
+    horizon: int = 5,
+    n_quantiles: int = 5,
+    decay_horizons: list[int] | tuple[int, ...] = (1, 5, 10, 20),
+    min_names: int = 5,
+) -> dict[str, FactorTestResult]:
+    """Compute factors then run Gate-3-style L1 admission tests.
 
-    prices = pl.DataFrame(rows).sort(["security_id", "trade_date"])
-    data = FactorInput(prices=prices, as_of=dates[-1])
-    factor_cols: list[pl.Series] = []
-    for code in MVP_FACTOR_CODES:
-        factor_cols.append(MVP_FACTORS[code].compute(data))
-
-    return prices.with_columns(factor_cols).select(
-        ["security_id", "trade_date", "close", *MVP_FACTOR_CODES]
+    ``data.prices`` must include ``close`` (and any columns required by the
+    selected factors). Returns one :class:`FactorTestResult` per code.
+    """
+    selected = list(codes) if codes is not None else list(ALL_FACTOR_CODES)
+    panel = build_factor_panel(data, codes=selected)
+    return evaluate_factors(
+        panel,
+        selected,
+        horizon=horizon,
+        n_quantiles=n_quantiles,
+        decay_horizons=decay_horizons,
+        min_names=min_names,
     )

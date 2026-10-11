@@ -108,7 +108,7 @@ monitor-funnel-replay: ## Gate 2b：历史交易日回放 L1/L2/L3 漏斗并写�
 features:       ## 列出 MVP 因子
 	uv run python -m quantagent.cli features --market CN
 
-evaluate:       ## 因子 IC/分层评估（默认 synthetic demo → docs/factor-reports）
+evaluate:       ## L1 因子 IC/分层准入（synthetic 全量注册因子 → docs/factor-reports）
 	uv run python -m quantagent.cli evaluate --synthetic --out docs/factor-reports
 
 portfolio:      ## 等权 Top-N + 风控 demo（synthetic，无 DB）
