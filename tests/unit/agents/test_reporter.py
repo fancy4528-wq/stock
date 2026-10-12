@@ -11,7 +11,7 @@ from quantagent.agents.llm.client import EchoLLMClient
 from quantagent.agents.reporter import ReporterAgent, build_deterministic_report
 from quantagent.agents.validation import require_evidence
 from quantagent.reporting.pipeline import build_synthetic_bundle
-from quantagent.shared.errors import EvidenceMissingError, SchemaValidationError
+from quantagent.shared.errors import EvidenceMissingError
 
 
 def test_deterministic_report_has_evidence() -> None:
@@ -34,12 +34,25 @@ async def test_reporter_agent_null_llm() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reporter_agent_echo_llm_invalid_raises() -> None:
+async def test_reporter_agent_echo_llm_invalid_falls_back() -> None:
+    """Partial / non-schema JSON must not kill the scheduled daily pipeline."""
     bundle = build_synthetic_bundle(date(2026, 9, 1))
     agent = ReporterAgent(llm=EchoLLMClient('{"market_summary": "x"}'))
     ctx = AgentContext(as_of=bundle.as_of, market="CN", run_id=bundle.run_id)
-    with pytest.raises(SchemaValidationError):
-        await agent.run(ctx, bundle)
+    report = await agent.run(ctx, bundle)
+    assert report.run_id == bundle.run_id
+    assert any(d.action == "schema_fail" for d in agent.degradations)
+
+
+@pytest.mark.asyncio
+async def test_reporter_agent_echo_llm_prose_falls_back() -> None:
+    """Prose (Expecting value at char 0) must degrade to deterministic."""
+    bundle = build_synthetic_bundle(date(2026, 9, 1))
+    agent = ReporterAgent(llm=EchoLLMClient("今日市场震荡，详见上文。"))
+    ctx = AgentContext(as_of=bundle.as_of, market="CN", run_id=bundle.run_id)
+    report = await agent.run(ctx, bundle)
+    assert "数据显示" in report.market_summary
+    assert any("JSON" in d.impact or "解析" in d.impact for d in agent.degradations)
 
 
 def test_require_evidence_raises() -> None:

@@ -10,6 +10,7 @@ from quantagent.agents.llm.budget import DegradationNote, TokenBudget
 from quantagent.agents.llm.call import complete_with_budget
 from quantagent.agents.llm.client import LLMClient, NullLLMClient
 from quantagent.agents.llm.metering import CostRecord, CostTracker
+from quantagent.agents.llm.structured import extract_json_object
 from quantagent.agents.reporter.prompts import load_common_constraints, load_prompt
 from quantagent.agents.reporter.schema import DailyReport, Observation
 from quantagent.agents.reporter.validation_log import ValidationRecord, ValidationTracker
@@ -234,7 +235,7 @@ def build_deterministic_report(bundle: ReportBundle) -> DailyReport:
 
 
 def _parse_llm_daily_report(text: str, bundle: ReportBundle) -> DailyReport:
-    raw: dict[str, Any] = json.loads(text)
+    raw = extract_json_object(text)
     raw.setdefault("as_of", bundle.as_of.isoformat())
     raw.setdefault("run_id", bundle.run_id)
     if "evidence" not in raw:
@@ -401,16 +402,32 @@ class ReporterAgent:
             completion_tokens=resp.completion_tokens,
         )
         if not resp.text.strip():
-            return await self._deterministic(ctx, bundle)
+            self.degradations.append(
+                DegradationNote(
+                    allocation=self._allocation,
+                    action="schema_fail",
+                    reason="empty LLM response",
+                    impact="日报改为确定性摘要（LLM 空响应）",
+                )
+            )
+            return await self._deterministic(
+                ctx, bundle, mode="llm_empty", model="deterministic"
+            )
         try:
             report = _parse_llm_daily_report(resp.text, bundle)
-        except (
-            SchemaValidationError,
-            EvidenceMissingError,
-            ValueError,
-            json.JSONDecodeError,
-        ) as exc:
+        except (SchemaValidationError, EvidenceMissingError, ValueError) as exc:
+            # Scheduled daily job must not die on prose / partial JSON from the LLM.
             self._record_validation(ctx=ctx, mode="llm", ok=False, error=exc)
-            raise SchemaValidationError(str(exc)) from exc
+            self.degradations.append(
+                DegradationNote(
+                    allocation=self._allocation,
+                    action="schema_fail",
+                    reason=str(exc)[:300],
+                    impact="日报改为确定性摘要（LLM JSON 解析失败）",
+                )
+            )
+            return await self._deterministic(
+                ctx, bundle, mode="llm_schema_fail", model="deterministic"
+            )
         self._record_validation(ctx=ctx, mode="llm", ok=True)
         return report
