@@ -96,6 +96,39 @@ def test_normalize_baostock(tmp_path: Path) -> None:
     ]
 
 
+def test_baostock_mixed_null_turnover_does_not_break_schema(tmp_path: Path) -> None:
+    """Long histories often have null turn early then floats — must not trip enrich."""
+    raw = pl.DataFrame(
+        {
+            "date": ["2024-01-02", "2024-01-03", "2024-01-04"],
+            "code": ["sz.002010", "sz.002010", "sz.002010"],
+            "open": ["10.000", "10.100", "10.200"],
+            "high": ["10.200", "10.300", "10.400"],
+            "low": ["9.900", "10.000", "10.100"],
+            "close": ["10.100", "10.200", "10.300"],
+            "preclose": ["10.000", "10.100", "10.200"],
+            "volume": ["100000", "200000", "300000"],
+            "amount": ["1010000.000", "2040000.000", "3090000.000"],
+            "turn": [None, "0.015100", "1.415000"],
+            "tradestatus": ["1", "1", "1"],
+            "isST": ["0", "0", "0"],
+        }
+    )
+    archive = ParquetArchive(tmp_path)
+    batch = archive.write(
+        raw,
+        source="baostock",
+        dataset="price_daily",
+        target_date=date(2024, 1, 4),
+        meta={"symbols": ["002010.SZ"]},
+        collected_at=datetime(2024, 1, 4, 8, 0, tzinfo=UTC),
+    )
+    out = PriceNormalizer().normalize(batch)
+    assert out.height == 3
+    assert out["turnover_rate"].null_count() == 1
+    assert out["turnover_rate"].drop_nulls().to_list() == pytest.approx([0.000151, 0.01415])
+
+
 def test_baostock_limit_up_and_suspend(tmp_path: Path) -> None:
     raw = pl.DataFrame(
         {

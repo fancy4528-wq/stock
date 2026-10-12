@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
 from datetime import date
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
-from quantagent.core.universe import load_universe_config
+from quantagent.core.universe import resolve_backfill_symbols
 from quantagent.data.collectors.baostock import BaostockPriceCollector
 from quantagent.data.loaders import PriceLoader
 from quantagent.data.normalizers.price import PriceNormalizer
@@ -70,17 +69,22 @@ async def main() -> int:
     p.add_argument("--min-bars", type=int, default=2000, help="Skip if already >= this many bars")
     p.add_argument("--archive-root", type=Path, default=None)
     p.add_argument("--only", default=None, help="Comma-separated symbols to restrict")
+    p.add_argument(
+        "--symbols-file",
+        type=Path,
+        default=None,
+        help="Newline symbol list (e.g. data/universes/csi300_hist_union.txt)",
+    )
     args = p.parse_args()
 
-    cfg = load_universe_config(args.universe)
-    symbols = list(cfg.bootstrap_symbols)
-    if args.only:
-        want = {s.strip() for s in args.only.split(",") if s.strip()}
-        symbols = [s for s in symbols if s in want]
+    only = [s.strip() for s in args.only.split(",") if s.strip()] if args.only else None
+    symbols = resolve_backfill_symbols(
+        args.universe, symbols_file=args.symbols_file, only=only
+    )
 
     print(
         f"backfill universe={args.universe} n={len(symbols)} "
-        f"window=[{args.start}, {args.end}]",
+        f"symbols_file={args.symbols_file} window=[{args.start}, {args.end}]",
         flush=True,
     )
     total = 0

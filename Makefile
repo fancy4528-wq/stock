@@ -1,8 +1,17 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly features evaluate evaluate-real evaluate-synthetic portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
 TODAY_PLUS_1Y := $(shell uv run python -c "from datetime import date,timedelta; print((date.today()+timedelta(days=365)).isoformat())")
+
+# Override for CSI300 L1: ``make backfill-10y UNIVERSE=csi300 SYMBOLS_FILE=data/universes/csi300_hist_union.txt``
+UNIVERSE ?= mvp_cn_50
+SYMBOLS_FILE ?=
+FROM_INDEX ?=
+OUT_DIR ?= docs/factor-reports
+PANEL_OUT ?= data/panels/l1_$(UNIVERSE).parquet
+SYMBOLS_FILE_FLAG := $(if $(SYMBOLS_FILE),--symbols-file $(SYMBOLS_FILE),)
+FROM_INDEX_FLAG := $(if $(FROM_INDEX),--from-index $(FROM_INDEX),)
 
 help:           ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -24,36 +33,39 @@ db-migrate:     ## 生成迁移
 
 ingest: ingest-universe ## 拉取 MVP 股票池（ingest-universe 别名）
 
-ingest-universe: ## 拉取 MVP 股票池数据并入库（bootstrap symbols）
-	uv run python -m quantagent.cli ingest --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY) --load --source baostock
+ingest-universe: ## 拉取股票池数据并入库（bootstrap；CSI300 用 UNIVERSE=csi300）
+	uv run python -m quantagent.cli ingest --universe $(UNIVERSE) --start 2015-01-01 --end $(TODAY) --load --source baostock
 
-backfill-10y: ## Gate1：逐标的回填 10 年日线（可断点续跑）+ 完整性审计
-	uv run python -u scripts/backfill_prices_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
-	uv run python -u scripts/audit_price_completeness.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+build-csi300: ## 拉 HS300 当前+历史成分 → csi300.yaml + hist union
+	uv run python -u scripts/build_csi300_universe.py --start 2015-01-01 --end $(TODAY)
+
+backfill-10y: ## 逐标的回填 10 年日线（可断点续跑）+ 完整性审计
+	uv run python -u scripts/backfill_prices_10y.py --universe $(UNIVERSE) --start 2015-01-01 --end $(TODAY) $(SYMBOLS_FILE_FLAG)
+	uv run python -u scripts/audit_price_completeness.py --universe $(UNIVERSE) --start 2015-01-01 --end $(TODAY) $(SYMBOLS_FILE_FLAG)
 
 backfill-adjust-10y: ## P3：回填复权因子（baostock query_adjust_factor）
-	uv run python -u scripts/backfill_adjust_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+	uv run python -u scripts/backfill_adjust_10y.py --universe $(UNIVERSE) --start 2015-01-01 --end $(TODAY) $(SYMBOLS_FILE_FLAG)
 
 backfill-valuation-10y: ## P3：回填估值 pe/pb/ps（baostock 日线字段）
-	uv run python -u scripts/backfill_valuation_10y.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY)
+	uv run python -u scripts/backfill_valuation_10y.py --universe $(UNIVERSE) --start 2015-01-01 --end $(TODAY) $(SYMBOLS_FILE_FLAG)
 
-backfill-universe-monthly: ## Gate1：月度 universe_snapshot 历史回填（需先有日历+行情入库）
-	uv run python -u scripts/backfill_universe_snapshots.py --universe mvp_cn_50 --start 2015-01-01 --end $(TODAY) --force
+backfill-universe-monthly: ## 月度 universe_snapshot（CSI300: FROM_INDEX=hs300）
+	uv run python -u scripts/backfill_universe_snapshots.py --universe $(UNIVERSE) --start 2015-01-01 --end $(TODAY) --force $(FROM_INDEX_FLAG) $(SYMBOLS_FILE_FLAG)
 
-seed-universe: ## 写入 mvp_cn_50 universe_snapshot（需 security 已有标的）
-	uv run python -m quantagent.cli seed-universe --universe mvp_cn_50 --as-of $(TODAY)
+seed-universe: ## 写入 universe_snapshot（需 security 已有标的）
+	uv run python -m quantagent.cli seed-universe --universe $(UNIVERSE) --as-of $(TODAY)
 
 ensure-survivorship: ## 写入退市探针 security + status_history（不进 bootstrap）
-	uv run python -m quantagent.cli ensure-survivorship --universe mvp_cn_50
+	uv run python -m quantagent.cli ensure-survivorship --universe $(UNIVERSE)
 
 reporter-validation: ## Reporter 校验失败率汇总（Gate 1 <5%）
 	uv run python scripts/reporter_validation_summary.py --path docs/reporter-validation-log.md
 
 ingest-daily:   ## 每日增量：宇宙行情+沪深300 + seed snapshot（A4）
-	uv run python -m quantagent.cli ingest-daily --universe mvp_cn_50 --source baostock
+	uv run python -m quantagent.cli ingest-daily --universe $(UNIVERSE) --source baostock
 
 ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 过滤）
-	uv run python -m quantagent.cli ingest --dataset security_industry --universe mvp_cn_50 --load --source akshare
+	uv run python -m quantagent.cli ingest --dataset security_industry --universe $(UNIVERSE) --load --source akshare
 
 ingest-calendar: ## A 股交易日历入库（akshare 主源；加 --dual-check 对比 baostock；end 默认 today+1y）
 	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01 --end $(TODAY_PLUS_1Y)
@@ -116,8 +128,8 @@ features:       ## 列出 MVP 因子
 
 evaluate: evaluate-real ## L1 因子准入（默认真实 DB 面板 → docs/factor-reports）
 
-evaluate-real:  ## Gate3：从 Postgres 拉 mvp_cn_50 行情跑 L1（需 backfill-10y）
-	uv run python -m quantagent.cli evaluate --from-db --universe mvp_cn_50 --start 2015-01-01 --out docs/factor-reports --export-panel data/panels/l1_mvp_cn_50.parquet
+evaluate-real:  ## Gate3：从 Postgres 拉行情跑 L1（CSI300: UNIVERSE=csi300 OUT_DIR=docs/factor-reports-csi300）
+	uv run python -m quantagent.cli evaluate --from-db --universe $(UNIVERSE) --start 2015-01-01 --out $(OUT_DIR) --export-panel $(PANEL_OUT)
 
 evaluate-synthetic: ## L1 合成面板（无 DB，CI / 离线）
 	uv run python -m quantagent.cli evaluate --synthetic --out docs/factor-reports-synthetic

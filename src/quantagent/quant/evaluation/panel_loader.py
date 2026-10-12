@@ -173,9 +173,20 @@ def load_l1_factor_input(
         if "_as_of" in valuations.columns:
             valuations = valuations.drop("_as_of")
 
+    # SW L1 membership at as_of (broadcast across the panel calendar; MVP approx).
+    industry: pl.DataFrame | None = None
+    ind = pit.get_industry(syms, as_of=as_of_date, taxonomy="sw_2021")
+    if not ind.is_empty():
+        industry = ind
+        if "level" in industry.columns:
+            l1 = industry.filter(pl.col("level") == 1)
+            if not l1.is_empty():
+                industry = l1
+
     return FactorInput(
         prices=prices,
         valuations=valuations,
+        industry=industry,
         as_of=as_of_date,
         meta={
             "source": "db",
@@ -186,6 +197,8 @@ def load_l1_factor_input(
             "n_symbols": len(syms),
             "n_rows": prices.height,
             "has_valuation": valuations is not None and not valuations.is_empty(),
+            "has_industry": industry is not None and not industry.is_empty(),
+            "n_industry": 0 if industry is None else industry.height,
         },
     )
 

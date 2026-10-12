@@ -49,6 +49,7 @@ def _run_evaluate(
     end: date | None = None,
     as_of: date | None = None,
     export_panel: Path | None = None,
+    transform: bool = True,
 ) -> int:
     import polars as pl
 
@@ -138,6 +139,7 @@ def _run_evaluate(
             codes=codes,
             horizon=horizon,
             n_quantiles=n_quantiles,
+            transform=transform,
         )
     else:
         assert panel_path is not None
@@ -160,6 +162,11 @@ def _run_evaluate(
             "is_limit_up",
             "is_limit_down",
             "is_suspended",
+            "industry_code",
+            "industry_name",
+            "log_mktcap",
+            "market_cap",
+            "circ_market_cap",
         }
         if compute:
             as_of_panel = panel["trade_date"].max()
@@ -186,6 +193,7 @@ def _run_evaluate(
                 codes=codes,
                 horizon=horizon,
                 n_quantiles=n_quantiles,
+                transform=transform,
             )
         else:
             if factor_cols is not None:
@@ -222,8 +230,27 @@ def _run_evaluate(
             "Prices via PIT qfq: last `adjust_factor` with trade_date ≤ bar "
             "(factor=1 when none)."
         )
+        if transform:
+            report_notes.append(
+                "Transform: MAD winsorize → industry/log-mktcap neutralize → "
+                "rank_pct (per trade_date). Industry = SW L1 @ as_of; "
+                "log_mktcap falls back to ln(close*volume/turnover) when "
+                "valuation market_cap is null."
+            )
+        else:
+            report_notes.append("Transform: disabled (raw factor values).")
+        report_notes.append(
+            "Labels: `fwd_ret_*` null when T+1 is limit-up or suspended "
+            "(entry untradeable; docs/07-quant-engine.md §4.3)."
+        )
     elif panel_path is not None:
         report_notes.append(f"Panel: parquet `{panel_path}` (compute={compute}).")
+        if compute:
+            report_notes.append(
+                "Transform: MAD → neutralize → rank_pct."
+                if transform
+                else "Transform: disabled."
+            )
 
     paths = write_factor_reports(results, out_dir, notes=report_notes)
     n_pass = sum(1 for r in results.values() if r.admission_pass)
@@ -1641,6 +1668,12 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--horizon", type=int, default=5, help="Forward-return horizon (days)")
     ev.add_argument("--quantiles", type=int, default=5)
     ev.add_argument(
+        "--transform",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Cross-section MAD → neutralize → rank_pct before IC (default: on)",
+    )
+    ev.add_argument(
         "--out",
         type=Path,
         default=Path("docs/factor-reports"),
@@ -2059,6 +2092,7 @@ def main(argv: list[str] | None = None) -> int:
             end=getattr(args, "end", None),
             as_of=getattr(args, "as_of", None),
             export_panel=getattr(args, "export_panel", None),
+            transform=bool(getattr(args, "transform", True)),
         )
 
     if args.command == "portfolio":

@@ -113,20 +113,42 @@ def rule_px_004_within_limits(df: pl.DataFrame, ctx: ValidationContext | None = 
 
 
 def rule_px_005_extreme_move(df: pl.DataFrame, ctx: ValidationContext | None = None) -> RuleResult:
-    """|close/prev_close - 1| > 50% when prev_close available."""
+    """Flag |close/prev_close - 1| > 50% when prev_close is available.
+
+    CN IPO / resume / delisting auctions routinely print >50% with real volume;
+    those must not block ingest (B4). Treat volume>0 extremes as WARN (suspect
+    row). Only zero-volume extremes stay ERROR — more likely bad/stale data.
+    Unadjusted ex-div discontinuities remain ``PX_012``.
+    """
     del ctx
     if "prev_close" not in df.columns:
         return RuleResult(code="PX_005", level="ERROR", status="pass", detail="skipped")
 
     with_prev = df.filter(pl.col("prev_close").is_not_null() & (pl.col("prev_close") > 0))
-    bad = with_prev.filter(((pl.col("close") / pl.col("prev_close")) - 1.0).abs() > 0.5)
-    keys = [_row_key(s, d) for s, d in zip(bad["symbol"], bad["trade_date"], strict=True)]
+    extreme = with_prev.filter(((pl.col("close") / pl.col("prev_close")) - 1.0).abs() > 0.5)
+    if extreme.height == 0:
+        return RuleResult(code="PX_005", level="ERROR", status="pass", detail="ok")
+
+    vol = pl.col("volume").fill_null(0) if "volume" in extreme.columns else pl.lit(0)
+    hard = extreme.filter(vol <= 0)
+    soft = extreme.filter(vol > 0)
+    if hard.height:
+        keys = [_row_key(s, d) for s, d in zip(hard["symbol"], hard["trade_date"], strict=True)]
+        return RuleResult(
+            code="PX_005",
+            level="ERROR",
+            status="fail",
+            detail="daily move > 50% with volume==0",
+            affected_count=hard.height,
+            affected_keys=keys,
+        )
+    keys = [_row_key(s, d) for s, d in zip(soft["symbol"], soft["trade_date"], strict=True)]
     return RuleResult(
         code="PX_005",
-        level="ERROR",
-        status="fail" if bad.height else "pass",
-        detail="daily move > 50%" if bad.height else "ok",
-        affected_count=bad.height,
+        level="WARN",
+        status="warn",
+        detail="daily move > 50% (traded; IPO/resume/event)",
+        affected_count=soft.height,
         affected_keys=keys,
     )
 

@@ -205,11 +205,17 @@ def test_B3_star_gem_20pct() -> None:
 
 
 def test_B4_px005_boundary_50pct() -> None:
-    """B4: true move at 49.9% passes; >50% fails PX_005."""
+    """B4: 49.9% passes; traded >50% warns (IPO/resume); zero-volume >50% errors."""
     ok = pl.DataFrame([_px(close=149.9, prev_close=100.0)])
-    bad = pl.DataFrame([_px(close=150.1, prev_close=100.0)])
+    traded = pl.DataFrame([_px(close=150.1, prev_close=100.0, volume=1_000)])
+    stale = pl.DataFrame([_px(close=150.1, prev_close=100.0, volume=0)])
     assert rule_px_005_extreme_move(ok).status == "pass"
-    assert rule_px_005_extreme_move(bad).status == "fail"
+    soft = rule_px_005_extreme_move(traded)
+    assert soft.status == "warn"
+    assert soft.level == "WARN"
+    hard = rule_px_005_extreme_move(stale)
+    assert hard.status == "fail"
+    assert hard.level == "ERROR"
 
 
 # ---------------------------------------------------------------------------

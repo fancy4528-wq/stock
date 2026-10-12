@@ -240,7 +240,7 @@ def normalize_symbol(raw: str, market: str) -> str:
 | `PX_002` | 所有价格 > 0 | ERROR |
 | `PX_003` | `volume >= 0`，`amount >= 0` | ERROR |
 | `PX_004` | 日涨跌幅在市场限制内（考虑 ST、新股、板块） | WARN |
-| `PX_005` | 单日涨跌幅 > 50%（可能是未处理的除权） | ERROR |
+| `PX_005` | 单日涨跌幅 > 50%：有成交→WARN（IPO/复牌/事件不拦入库）；无成交→ERROR | WARN / ERROR |
 | `PX_006` | 交易日历中的开市日必须有数据（除停牌） | ERROR |
 | `PX_007` | 停牌日不应有成交量 | WARN |
 | `PX_008` | `amount / volume` 应落在 `[low, high]` 区间 | WARN |

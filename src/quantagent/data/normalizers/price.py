@@ -48,6 +48,27 @@ CANONICAL_PRICE_COLUMNS = [
     "is_suspended",
 ]
 
+# Explicit schema so long histories with mixed null/float turnover do not trip
+# Polars dict-inference (null-first rows inferred as i64, then float fails).
+_CANONICAL_PRICE_SCHEMA: dict[str, pl.DataType] = {
+    "symbol": pl.Utf8,
+    "trade_date": pl.Date,
+    "open": pl.Float64,
+    "high": pl.Float64,
+    "low": pl.Float64,
+    "close": pl.Float64,
+    "prev_close": pl.Float64,
+    "volume": pl.Int64,
+    "amount": pl.Float64,
+    "turnover_rate": pl.Float64,
+    "source": pl.Utf8,
+    "limit_up_px": pl.Float64,
+    "limit_down_px": pl.Float64,
+    "is_limit_up": pl.Boolean,
+    "is_limit_down": pl.Boolean,
+    "is_suspended": pl.Boolean,
+}
+
 _LIMIT_EPS = 1e-6
 _TICK = Decimal("0.01")
 
@@ -327,4 +348,6 @@ class PriceNormalizer:
                     "is_suspended": suspended,
                 }
             )
-        return pl.DataFrame(enriched).select(CANONICAL_PRICE_COLUMNS)
+        return pl.DataFrame(enriched, schema=_CANONICAL_PRICE_SCHEMA).select(
+            CANONICAL_PRICE_COLUMNS
+        )

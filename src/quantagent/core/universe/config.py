@@ -92,6 +92,30 @@ def load_universe_config(code: str = "mvp_cn_50") -> UniverseConfig:
     return cfg
 
 
+def resolve_backfill_symbols(
+    code: str = "mvp_cn_50",
+    *,
+    symbols_file: Path | str | None = None,
+    only: list[str] | None = None,
+) -> list[str]:
+    """Bootstrap symbols, or an explicit newline list (e.g. CSI300 hist union)."""
+    if symbols_file is not None:
+        path = Path(symbols_file)
+        if not path.is_file():
+            raise ConfigError(f"symbols file not found: {path}")
+        symbols = [
+            ln.strip()
+            for ln in path.read_text(encoding="utf-8").splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+    else:
+        symbols = list(load_universe_config(code).bootstrap_symbols)
+    if only:
+        want = set(only)
+        symbols = [s for s in symbols if s in want]
+    return symbols
+
+
 def active_survivorship_symbols(cfg: UniverseConfig, as_of: date) -> list[str]:
     """Probe symbols that were listed and not yet delisted on ``as_of``."""
     out: list[str] = []
