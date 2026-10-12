@@ -7,6 +7,7 @@ from quantagent.core.universe.config import (
     active_survivorship_symbols,
     ensure_survivorship_probes,
     load_universe_config,
+    resolve_backfill_symbols,
     seed_universe_snapshot,
     universe_config_path,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "active_survivorship_symbols",
     "ensure_survivorship_probes",
     "load_universe_config",
+    "resolve_backfill_symbols",
     "seed_universe_snapshot",
     "universe_config_path",
 ]

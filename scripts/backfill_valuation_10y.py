@@ -6,9 +6,11 @@ import argparse
 import asyncio
 from datetime import date
 
+from pathlib import Path
+
 from sqlalchemy import create_engine, text
 
-from quantagent.core.universe import load_universe_config
+from quantagent.core.universe import resolve_backfill_symbols
 from quantagent.data.collectors.baostock import BaostockValuationCollector
 from quantagent.data.loaders.valuation import ValuationLoader
 from quantagent.data.normalizers.valuation import ValuationNormalizer
@@ -45,15 +47,22 @@ async def main() -> int:
         help="Skip symbol if already >= this many valuation rows",
     )
     p.add_argument("--only", default=None, help="Comma-separated symbols to restrict")
+    p.add_argument(
+        "--symbols-file",
+        type=Path,
+        default=None,
+        help="Newline symbol list (e.g. CSI300 hist union)",
+    )
     args = p.parse_args()
 
-    symbols = list(load_universe_config(args.universe).bootstrap_symbols)
-    if args.only:
-        want = {s.strip() for s in args.only.split(",") if s.strip()}
-        symbols = [s for s in symbols if s in want]
+    only = [s.strip() for s in args.only.split(",") if s.strip()] if args.only else None
+    symbols = resolve_backfill_symbols(
+        args.universe, symbols_file=args.symbols_file, only=only
+    )
 
     print(
-        f"valuation backfill n={len(symbols)} window=[{args.start}, {args.end}]",
+        f"valuation backfill n={len(symbols)} symbols_file={args.symbols_file} "
+        f"window=[{args.start}, {args.end}]",
         flush=True,
     )
     failures: list[str] = []

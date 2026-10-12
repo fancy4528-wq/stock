@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import date
+from pathlib import Path
 
-from quantagent.core.universe import load_universe_config
+from quantagent.core.universe import resolve_backfill_symbols
 from quantagent.data.collectors.baostock import BaostockAdjustCollector
 from quantagent.data.loaders.adjust import AdjustLoader
 from quantagent.data.normalizers.adjust import AdjustNormalizer
@@ -17,11 +18,20 @@ async def main() -> int:
     p.add_argument("--universe", default="mvp_cn_50")
     p.add_argument("--start", type=date.fromisoformat, default=date(2015, 1, 1))
     p.add_argument("--end", type=date.fromisoformat, default=date.today())
+    p.add_argument(
+        "--symbols-file",
+        type=Path,
+        default=None,
+        help="Newline symbol list (e.g. CSI300 hist union)",
+    )
     args = p.parse_args()
 
-    symbols = list(load_universe_config(args.universe).bootstrap_symbols)
+    symbols = resolve_backfill_symbols(
+        args.universe, symbols_file=args.symbols_file
+    )
     print(
-        f"adjust backfill n={len(symbols)} window=[{args.start}, {args.end}]",
+        f"adjust backfill n={len(symbols)} symbols_file={args.symbols_file} "
+        f"window=[{args.start}, {args.end}]",
         flush=True,
     )
     failures: list[str] = []

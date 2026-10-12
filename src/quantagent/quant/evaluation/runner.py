@@ -25,7 +25,18 @@ from quantagent.quant.features.registry import (
     L1_SYNTHETIC_CODES,
     MVP_FACTOR_CODES,
 )
-from quantagent.quant.labels.targets import attach_forward_returns, forward_return_col
+from quantagent.quant.features.transform import (
+    DEFAULT_TRANSFORM,
+    TransformConfig,
+    attach_cs_covariates,
+    transform_cross_section,
+    transform_meta,
+)
+from quantagent.quant.labels.targets import (
+    attach_forward_returns,
+    forward_return_col,
+    tradeability_label_stats,
+)
 
 # docs/07-quant-engine.md §3.2
 IC_MEAN_ABS_MIN: Final[float] = 0.02
@@ -271,6 +282,18 @@ def evaluate_factor(
             "volume",
             "amount",
             "turnover_rate",
+            "industry_code",
+            "industry_name",
+            "log_mktcap",
+            "market_cap",
+            "circ_market_cap",
+            "pe_ttm",
+            "pb",
+            "ps_ttm",
+            "prev_close",
+            "is_limit_up",
+            "is_limit_down",
+            "is_suspended",
             factor_col,
         }
         others = other_factor_cols or [
@@ -333,6 +356,16 @@ def evaluate_factors(
 ) -> dict[str, FactorTestResult]:
     """Evaluate multiple factor columns; each sees the others for correlations."""
     horizons = sorted(set([horizon, *decay_horizons]))
+    stats = tradeability_label_stats(panel)
+    if stats.get("flags_present"):
+        n_bad = stats["n_untradeable_entry"]
+        n_all = stats["n_rows"]
+        pct = 100.0 * n_bad / n_all if n_all else 0.0
+        print(
+            f"evaluate: label mask T+1 limit-up/suspended → "
+            f"{n_bad}/{n_all} rows ({pct:.2f}%)",
+            flush=True,
+        )
     labeled = attach_forward_returns(panel, horizons=horizons, price_col=price_col)
     corr_matrix = _mean_factor_corr_matrix(
         labeled,
@@ -473,6 +506,7 @@ def synthetic_price_panel(
                     "volume": volume,
                     "amount": amount,
                     "turnover_rate": turnover,
+                    "industry_code": f"I{sid % 4}",
                     "pe_ttm": 10.0 + sid * 0.1 + float(rng.uniform(-2, 2)),
                     "pb": 1.5 + sid * 0.02 + float(rng.uniform(-0.3, 0.3)),
                     "ps_ttm": 3.0 + sid * 0.05 + float(rng.uniform(-0.5, 0.5)),
@@ -534,14 +568,34 @@ def run_l1_pipeline(
     n_quantiles: int = 5,
     decay_horizons: list[int] | tuple[int, ...] = (1, 5, 10, 20),
     min_names: int = 5,
+    transform: TransformConfig | bool = DEFAULT_TRANSFORM,
 ) -> dict[str, FactorTestResult]:
-    """Compute factors then run Gate-3-style L1 admission tests.
+    """Compute factors, optionally transform cross-sections, then L1 admit.
 
     ``data.prices`` must include ``close`` (and any columns required by the
     selected factors). Returns one :class:`FactorTestResult` per code.
+
+    When ``transform`` is enabled (default), each factor is MAD-winsorized,
+    neutralized to industry / log-mktcap when available, then ``rank_pct``.
     """
     selected = list(codes) if codes is not None else list(ALL_FACTOR_CODES)
+    cfg = (
+        transform
+        if isinstance(transform, TransformConfig)
+        else TransformConfig(enabled=bool(transform))
+    )
     panel = build_factor_panel(data, codes=selected)
+    if cfg.enabled:
+        panel = attach_cs_covariates(panel, data)
+        meta = transform_meta(panel, cfg)
+        data.meta.update(meta)
+        print(
+            "evaluate: transform "
+            f"mad_n={cfg.mad_n} industry={meta['neutralize_industry']} "
+            f"mktcap={meta['neutralize_mktcap']} rank={meta['rank_pct']}",
+            flush=True,
+        )
+        panel = transform_cross_section(panel, selected, config=cfg)
     return evaluate_factors(
         panel,
         selected,

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import bindparam, create_engine, text
 from sqlalchemy.dialects.postgresql import ARRAY, TEXT
 
-from quantagent.core.universe import load_universe_config
+from quantagent.core.universe import load_universe_config, resolve_backfill_symbols
 from quantagent.shared.config import get_settings
 
 
@@ -18,10 +19,16 @@ def main() -> None:
     p.add_argument("--start", type=date.fromisoformat, default=date(2015, 1, 1))
     p.add_argument("--end", type=date.fromisoformat, default=date.today())
     p.add_argument("--threshold", type=float, default=0.01, help="Max missing rate")
+    p.add_argument(
+        "--symbols-file",
+        type=Path,
+        default=None,
+        help="Newline symbol list (e.g. CSI300 hist union)",
+    )
     args = p.parse_args()
 
     cfg = load_universe_config(args.universe)
-    symbols = list(cfg.bootstrap_symbols)
+    symbols = resolve_backfill_symbols(args.universe, symbols_file=args.symbols_file)
     eng = create_engine(get_settings().database_url, pool_pre_ping=True)
 
     with eng.connect() as conn:

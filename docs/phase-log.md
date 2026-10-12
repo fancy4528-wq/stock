@@ -4,22 +4,40 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（真实数据 L1 含复权+估值已重跑，准入仍 0/33，未关门）
+**Gate 3 状态**: 进行中（标签可交易性 mask 已接入并重跑，准入仍 0/33，未关门）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
 - 真实数据 L1：`make evaluate-real` / `evaluate --from-db`（`mvp_cn_50`，2015-01-01→2026-09-30，135k 行）
 - 回填 `adjust_factor`（717 行）+ `valuation_daily`（~135k 行，baostock pe/pb/ps）
 - 修复 `get_prices_as_of`：稀疏复权因子改为 as-of（`trade_date <=`）LATERAL join（migration `0008`）
+- 截面变换管线 `features/transform.py`：MAD 去极值 → 行业/市值中性化 → `rank_pct`；`evaluate --transform/--no-transform`（默认开）
+- L1 加载申万一级行业（`get_industry` @ as_of）；`log_mktcap` 在 `market_cap` 为空时用 `ln(close*volume/turnover)` 代理
+- 标签可交易性：`attach_forward_returns` 默认在 **T+1 涨停/停牌** 时将 `fwd_ret_*` 置 NaN（§4.3；单测 `test_labels.py`）
 
 **真实 L1（复权+估值后，2026-10-11）**:
 - 评估 **33/33** 因子（含 `ep_ttm`/`bp`/`sp_ttm`）；L1 admission **PASS 0/33**
 - 较接近：`dist_from_high_252d` IC=+0.025 t=+4.5 但 ICIR=0.09≪0.3；`skew_60d` |IC|=0.020 同样卡在 ICIR/方向比
+
+**真实 L1 + 截面变换（2026-10-11）**:
+- transform 生效：`industry=True mktcap=True rank=True`；admission 仍 **PASS 0/33**
+- 较接近：`ep_ttm` IC=+0.016 ICIR=+0.116 t=+6.2；`rev_5d` IC=+0.015 ICIR=+0.103 t=+5.5
+
+**真实 L1 + 变换 + 标签 mask（2026-10-11）**:
+- 排除 T+1 涨停/停牌：**2468/135107（1.83%）** 行标签置空；admission 仍 **PASS 0/33**
+- 较接近：`rev_5d` IC=+0.016 ICIR=+0.107；`ep_ttm` IC=+0.015 ICIR=+0.114（仍远低于 `|ICIR|≥0.3`）
+- 结论：Gate 3 标签硬条件已满足；50 池噪声仍是准入主瓶颈
 - 报告见 [factor-reports](factor-reports/README.md)
 
+**CSI300 扩池（进行中，2026-10-11）**:
+- 先上 CSI300（CSI800 = HS300∪ZZ500，后续）
+- `BaostockIndexConstituentCollector` + `make build-csi300`：当前成分 300 → `config/universe/csi300.yaml`；月度并集 **653** → `data/universes/csi300_hist_union.txt`
+- Makefile 支持 `UNIVERSE=` / `SYMBOLS_FILE=` / `FROM_INDEX=hs300`
+- 行情 10y 回填已启动（`backfill_prices_10y --symbols-file ...hist_union`）；完成后接 adjust / valuation / industry / 月度 snapshot（`--from-index hs300`）再 `evaluate-real UNIVERSE=csi300`
+
 **下一步（Gate 3）**:
-- 截面中性化 / 更大股票池（50 池 IC 噪声大、ICIR 普遍 <0.1）
-- 或验收标签侧排除涨停/停牌后再评
+- 完成 CSI300 数据回填 → 真实 L1 重跑（冲击 `|ICIR|≥0.3`）
+- CSI800（可选）= HS300∪ZZ500
 - 达标因子 ≥5 后进入 L2 等权 / IC 加权基线
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
