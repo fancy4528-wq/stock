@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（标签可交易性 mask 已接入并重跑，准入仍 0/33，未关门）
+**Gate 3 状态**: 进行中（中性化 NaN 秩塌缩已修；CSI300 5y 准入 **1/33**，未关门）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -29,16 +29,30 @@
 - 结论：Gate 3 标签硬条件已满足；50 池噪声仍是准入主瓶颈
 - 报告见 [factor-reports](factor-reports/README.md)
 
-**CSI300 扩池（进行中，2026-10-11）**:
+**CSI300 扩池（2026-10-11 ~ 2026-10-14）**:
 - 先上 CSI300（CSI800 = HS300∪ZZ500，后续）
 - `BaostockIndexConstituentCollector` + `make build-csi300`：当前成分 300 → `config/universe/csi300.yaml`；月度并集 **653** → `data/universes/csi300_hist_union.txt`
 - Makefile 支持 `UNIVERSE=` / `SYMBOLS_FILE=` / `FROM_INDEX=hs300`
-- 行情 10y 回填已启动（`backfill_prices_10y --symbols-file ...hist_union`）；完成后接 adjust / valuation / industry / 月度 snapshot（`--from-index hs300`）再 `evaluate-real UNIVERSE=csi300`
+- 数据回填完成：行情（653）+ adjust（4 只 baostock 空因子）+ valuation（超时 8 只已重试补齐）+ 申万行业（当前成分）+ 月度 snapshot **141/141**（`--from-index hs300`）
+- `PX_005`：有成交量的日涨跌 >50% 改为 WARN（放行 IPO/复牌），零成交仍 ERROR；`PriceNormalizer` 显式 schema 修 Polars 长历史类型推断
+
+**真实 L1 CSI300（变换 + 标签 mask，2026-10-14；初跑作废）**:
+- 初跑全员负 IC、因子两两 corr≈0.85–1.0：根因是 `neutralize` 对缺行业行写 **NaN**（Polars 不计入 null），`rank_pct` 把所有 NaN 打成同一百分位 → 截面因子塌缩。已修为 null + `fill_nan(None)`（单测覆盖）
+- 附带：历史并集行业覆盖约半（当前成分入库）；缺行业行在中性化后正确置空，不再污染秩
+
+**真实 L1 CSI300 修复后 10y（2015→2026-10，2026-10-14）**:
+- 面板 **1.68M** 行；admission 仍 **PASS 0/33**；符号恢复正常（反转/估值为正，动量/换手为负）
+- 较接近：`turnover_20d` ICIR=-0.252；`rev_5d`/+`mom_5d` |ICIR|=0.248；`ep_ttm` ICIR=+0.196
+- 报告 [factor-reports-csi300](factor-reports-csi300/README.md)
+
+**真实 L1 CSI300 5y 窗（2021-10-14→2026-10-13）**:
+- **PASS 1/33**：`skew_60d` IC=-0.022 ICIR=**-0.313** t=-10.6
+- 接近：`max_ret_20d` ICIR=-0.296；`ep_ttm` +0.250；`vol_60d` -0.240；`bp` +0.234
+- 报告 [factor-reports-csi300-5y](factor-reports-csi300-5y/README.md)
+- 结论：5y 作主评估窗更合理（近端结构）；10y 作稳健性对照。仍差 ≥5 个达标因子
 
 **下一步（Gate 3）**:
-- 完成 CSI300 数据回填 → 真实 L1 重跑（冲击 `|ICIR|≥0.3`）
-- CSI800（可选）= HS300∪ZZ500
-- 达标因子 ≥5 后进入 L2 等权 / IC 加权基线
+- 补全历史并集申万行业；可选 CSI800；冲击达标因子 ≥5 后进 L2
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
