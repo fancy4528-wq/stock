@@ -170,6 +170,37 @@ def test_passes_admission_fail_on_weak_ic() -> None:
     assert any("ic_mean" in n for n in notes)
 
 
+def test_greedy_admission_corr_only_vs_admitted() -> None:
+    from quantagent.quant.evaluation.runner import apply_greedy_admission
+
+    def _strong(code: str, icir: float, corrs: dict[str, float]) -> FactorTestResult:
+        return FactorTestResult(
+            factor_code=code,
+            period=(date(2024, 1, 1), date(2024, 6, 1)),
+            ic_mean=0.05 if icir > 0 else -0.05,
+            ic_std=0.1,
+            icir=icir,
+            ic_t_stat=5.0,
+            ic_p_value=0.0,
+            ic_positive_ratio=0.6 if icir > 0 else 0.4,
+            ic_by_year={"2024": icir},
+            correlations=corrs,
+        )
+
+    # a strongest; b highly corr with a; c orthogonal — expect a + c.
+    results = {
+        "a": _strong("a", 0.5, {"b": 0.9, "c": 0.1}),
+        "b": _strong("b", 0.4, {"a": 0.9, "c": 0.1}),
+        "c": _strong("c", 0.35, {"a": 0.1, "b": 0.1}),
+    }
+    admitted = apply_greedy_admission(results)
+    assert admitted == ["a", "c"]
+    assert results["a"].admission_pass is True
+    assert results["b"].admission_pass is False
+    assert results["c"].admission_pass is True
+    assert any("corr(a)" in n for n in results["b"].admission_notes)
+
+
 def test_write_factor_report(tmp_path) -> None:  # type: ignore[no-untyped-def]
     panel = synthetic_eval_panel(n_dates=40, n_names=25, seed=3)
     result = evaluate_factor(panel, factor_code="good_factor", min_names=8, decay_horizons=(5,))
