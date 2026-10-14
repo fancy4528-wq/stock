@@ -44,8 +44,12 @@ def winsorize_mad(s: pl.Series, n: float = 3.0) -> pl.Series:
 
 
 def rank_pct(s: pl.Series) -> pl.Series:
-    """Cross-section percentile rank in ``[0, 1]`` (average ties)."""
-    vals = s.cast(pl.Float64, strict=False)
+    """Cross-section percentile rank in ``[0, 1]`` (average ties).
+
+    NaN is treated as null (Polars ranks NaN as a real value and would otherwise
+    assign every missing residual the same percentile — collapsing factor corr).
+    """
+    vals = s.cast(pl.Float64, strict=False).fill_nan(None)
     n = int(vals.len() - vals.null_count())
     if n <= 1:
         return pl.Series(vals.name, [None] * vals.len(), dtype=pl.Float64)
@@ -58,7 +62,11 @@ def neutralize(
     industry: pl.Series | None = None,
     log_mktcap: pl.Series | None = None,
 ) -> pl.Series:
-    """OLS residual of factor on industry dummies and/or log market cap."""
+    """OLS residual of factor on industry dummies and/or log market cap.
+
+    Invalid rows (non-finite factor / missing industry / missing mktcap) are
+    **null**, not NaN — see :func:`rank_pct`.
+    """
     y = factor.cast(pl.Float64, strict=False).to_numpy().astype(float, copy=False)
     n = len(y)
     if n == 0:
@@ -81,7 +89,11 @@ def neutralize(
         mc = None
 
     if int(valid.sum()) < 3:
-        return pl.Series(factor.name, y, dtype=pl.Float64)
+        return pl.Series(
+            factor.name,
+            [float(y[i]) if valid[i] else None for i in range(n)],
+            dtype=pl.Float64,
+        )
 
     yv = y[valid]
     design: list[np.ndarray] = [np.ones(yv.shape[0], dtype=float)]
@@ -95,17 +107,20 @@ def neutralize(
     if mc is not None:
         design.append(mc[valid].astype(float, copy=False))
 
+    resid_valid: np.ndarray
     if len(design) == 1:
         # Intercept-only → demean.
-        resid = np.full(n, np.nan)
-        resid[valid] = yv - float(yv.mean())
-        return pl.Series(factor.name, resid, dtype=pl.Float64)
+        resid_valid = yv - float(yv.mean())
+    else:
+        x = np.column_stack(design)
+        coef, *_ = np.linalg.lstsq(x, yv, rcond=None)
+        resid_valid = yv - x @ coef
 
-    x = np.column_stack(design)
-    coef, *_ = np.linalg.lstsq(x, yv, rcond=None)
-    resid = np.full(n, np.nan)
-    resid[valid] = yv - x @ coef
-    return pl.Series(factor.name, resid, dtype=pl.Float64)
+    out_list: list[float | None] = [None] * n
+    idx = np.flatnonzero(valid)
+    for j, i in enumerate(idx):
+        out_list[int(i)] = float(resid_valid[j])
+    return pl.Series(factor.name, out_list, dtype=pl.Float64)
 
 
 def estimate_log_mktcap(panel: pl.DataFrame) -> pl.Series:

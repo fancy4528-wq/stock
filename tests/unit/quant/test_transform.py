@@ -36,6 +36,26 @@ def test_rank_pct_bounds_and_ties() -> None:
     assert float(r[1]) == pytest.approx(float(r[2]))
 
 
+def test_rank_pct_treats_nan_as_null() -> None:
+    """NaN must not share one percentile (would collapse cross-factor corr)."""
+    s = pl.Series("x", [1.0, float("nan"), 3.0, float("nan"), 5.0])
+    r = rank_pct(s)
+    assert r.null_count() == 2
+    finite = [float(v) for v in r.to_list() if v is not None]
+    assert finite == pytest.approx([0.0, 0.5, 1.0])
+
+
+def test_neutralize_missing_industry_is_null_not_nan() -> None:
+    industry = pl.Series("ind", ["A", None, "B", None, "B"])
+    factor = pl.Series("f", [1.0, 2.0, 3.0, 4.0, 5.0])
+    log_mc = pl.Series("mc", [1.0, 1.1, 1.2, 1.3, 1.4])
+    resid = neutralize(factor, industry=industry, log_mktcap=log_mc)
+    assert resid.null_count() == 2
+    assert resid.dtype == pl.Float64
+    # No NaN masquerading as values (Polars null_count ignores NaN).
+    assert int(np.isnan(resid.drop_nulls().to_numpy()).sum()) == 0
+
+
 def test_neutralize_removes_industry_mean() -> None:
     # Factor = industry effect + noise; residual should be near zero mean per industry.
     industry = pl.Series("ind", ["A", "A", "B", "B", "B", "C"])
