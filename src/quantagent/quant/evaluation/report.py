@@ -68,7 +68,7 @@ def render_factor_report(result: FactorTestResult) -> str:
 
 ---
 *Thresholds: |IC|≥0.02, |t|≥2, ICIR≥0.3, directionality outside (0.45,0.55),
-year same-sign ≥60%, pairwise |corr|<0.7 (docs/07-quant-engine.md §3.2).*
+year same-sign ≥60%, |corr|<0.7 vs already-admitted factors (docs/07-quant-engine.md §3.2).*
 """
 
 

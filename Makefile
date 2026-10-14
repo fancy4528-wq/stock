@@ -64,8 +64,8 @@ reporter-validation: ## Reporter 校验失败率汇总（Gate 1 <5%）
 ingest-daily:   ## 每日增量：宇宙行情+沪深300 + seed snapshot（A4）
 	uv run python -m quantagent.cli ingest-daily --universe $(UNIVERSE) --source baostock
 
-ingest-industry: ## 申万行业 taxonomy + L1 归属入库（可加 --universe 过滤）
-	uv run python -m quantagent.cli ingest --dataset security_industry --universe $(UNIVERSE) --load --source akshare
+ingest-industry: ## 申万行业 taxonomy + 全市场 L1 归属（勿按 universe 过滤，避免漏历史并集）
+	uv run python -m quantagent.cli ingest --dataset security_industry --load --source akshare
 
 ingest-calendar: ## A 股交易日历入库（akshare 主源；加 --dual-check 对比 baostock；end 默认 today+1y）
 	uv run python -m quantagent.cli ingest --dataset trading_calendar --source akshare --load --dual-check --start 2015-01-01 --end $(TODAY_PLUS_1Y)

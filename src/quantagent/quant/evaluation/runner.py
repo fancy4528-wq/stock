@@ -56,8 +56,17 @@ ADMISSION: Final[dict[str, float]] = {
 }
 
 
-def passes_admission(result: FactorTestResult) -> tuple[bool, list[str]]:
-    """Check Gate-style L1 thresholds; return (ok, notes)."""
+def passes_admission(
+    result: FactorTestResult,
+    *,
+    admitted_codes: frozenset[str] | set[str] | None = None,
+) -> tuple[bool, list[str]]:
+    """Check Gate-style L1 thresholds; return (ok, notes).
+
+    Pairwise corr is only enforced against ``admitted_codes`` (docs/07 §3.2
+    「与已有因子相关性」). Pass an empty set for metrics-only; omit / ``None``
+    also means metrics-only (single-factor eval has no admitted inventory yet).
+    """
     notes: list[str] = []
     ok = True
 
@@ -100,12 +109,45 @@ def passes_admission(result: FactorTestResult) -> tuple[bool, list[str]]:
             else:
                 notes.append(f"year same-sign={majority:.0%} ok")
 
-    for other, corr in result.correlations.items():
-        if abs(corr) >= CORR_MAX:
-            ok = False
-            notes.append(f"corr({other})={corr:.3f} >= {CORR_MAX}")
+    if admitted_codes is not None:
+        for other, corr in result.correlations.items():
+            if other not in admitted_codes:
+                continue
+            if abs(corr) >= CORR_MAX:
+                ok = False
+                notes.append(f"corr({other})={corr:.3f} >= {CORR_MAX}")
 
     return ok, notes
+
+
+def apply_greedy_admission(
+    results: dict[str, FactorTestResult],
+) -> list[str]:
+    """Admit by |ICIR| desc among metric-passers; corr only vs already admitted.
+
+    Mutates ``admission_pass`` / ``admission_notes`` on each result. Returns the
+    ordered list of admitted factor codes.
+    """
+    metrics_ok: list[FactorTestResult] = []
+    for result in results.values():
+        ok, notes = passes_admission(result, admitted_codes=frozenset())
+        if ok:
+            metrics_ok.append(result)
+        else:
+            result.admission_pass = False
+            result.admission_notes = notes
+
+    metrics_ok.sort(key=lambda r: abs(r.icir), reverse=True)
+    admitted: list[str] = []
+    admitted_set: set[str] = set()
+    for result in metrics_ok:
+        ok, notes = passes_admission(result, admitted_codes=admitted_set)
+        result.admission_pass = ok
+        result.admission_notes = notes
+        if ok:
+            admitted.append(result.factor_code)
+            admitted_set.add(result.factor_code)
+    return admitted
 
 
 def _factor_autocorr(
@@ -391,6 +433,12 @@ def evaluate_factors(
             labeled_panel=labeled,
             precomputed_correlations=corr_matrix.get(code, {}),
         )
+    admitted = apply_greedy_admission(results)
+    print(
+        f"evaluate: greedy admission vs admitted-set → {len(admitted)} pass "
+        f"({', '.join(admitted) if admitted else 'none'})",
+        flush=True,
+    )
     return results
 
 

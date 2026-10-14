@@ -8,45 +8,44 @@
 
 | Metric | Value |
 |---|---|
-| IC mean | -0.0048 |
-| IC std | 0.0822 |
-| ICIR | -0.0587 |
-| IC t-stat | -2.021 |
-| IC p-value | 0.0435 |
-| IC > 0 ratio | 47.1% |
+| IC mean | -0.0139 |
+| IC std | 0.0713 |
+| ICIR | -0.1942 |
+| IC t-stat | -6.692 |
+| IC p-value | 0.0000 |
+| IC > 0 ratio | 43.1% |
 | N periods | 1187 |
 
 ## Quantile returns
 
 | Q1 | Q2 | Q3 | Q4 | Q5 |
 | --- | --- | --- | --- | --- |
-| +0.1946% | +0.1567% | +0.1500% | +0.2016% | +0.1873% |
+| +0.0675% | +0.0715% | +0.1173% | +0.0949% | -0.0358% |
 
-- Monotonicity (Spearman Q vs ret): +0.100
-- Long-short mean return: -0.0073%
-- Long-short Sharpe (period-scaled): -0.205
+- Monotonicity (Spearman Q vs ret): -0.100
+- Long-short mean return: -0.1033%
+- Long-short Sharpe (period-scaled): -3.609
 
 ## Stability
 
-- IC decay: 1d=-0.0114, 5d=-0.0048, 10d=-0.0007, 20d=-0.0013
-- IC by year: 2021=+0.0057, 2022=-0.0063, 2023=+0.0162, 2024=-0.0092, 2025=-0.0154, 2026=-0.0132
-- IC by regime (mkt up/down): down=+0.0025, up=-0.0118
-- Factor autocorr (t vs t-1): +0.902
-- Turnover estimate `1-|ac|`: 0.098
+- IC decay: 1d=-0.0203, 5d=-0.0139, 10d=-0.0107, 20d=-0.0083
+- IC by year: 2021=-0.0247, 2022=-0.0124, 2023=+0.0043, 2024=-0.0208, 2025=-0.0204, 2026=-0.0198
+- IC by regime (mkt up/down): down=-0.0059, up=-0.0214
+- Factor autocorr (t vs t-1): +0.909
+- Turnover estimate `1-|ac|`: 0.091
 
 ## Correlations vs other factors
 
-amihud_illiq_20d=+0.072, amount_20d=-0.044, beta_252d=-0.009, bp=-0.003, dist_from_high_252d=+0.047, dist_from_low_252d=+0.015, downside_vol_60d=-0.037, ep_ttm=+0.005, kurt_60d=-0.011, ma_cross_5_20=+0.206, max_dd_60d=+0.090, max_ret_20d=+0.033, mom_120d=+0.011, mom_20d=+0.118, mom_20d_ex1w=-0.003, mom_5d=+0.233, mom_60d=+0.013, rel_str_market=+0.118, rev_1d=-0.042, rev_5d=-0.233, rev_intraday=+0.041, rev_overnight=-0.006, skew_60d=-0.010, sp_ttm=-0.002, trend_r2_60d=-0.007, trend_slope_60d=-0.064, turnover_20d=-0.035, turnover_ratio_5_60=+0.716, vol_20d=+0.010, vol_60d=-0.030, vol_price_corr_20d=+0.049, vol_ratio_20_60=+0.068
+amihud_illiq_20d=+0.078, amount_20d=-0.053, beta_252d=-0.012, bp=+0.003, dist_from_high_252d=+0.058, dist_from_low_252d=+0.015, downside_vol_60d=-0.060, ep_ttm=+0.004, kurt_60d=-0.011, ma_cross_5_20=+0.262, max_dd_60d=+0.122, max_ret_20d=+0.030, mom_120d=+0.009, mom_20d=+0.156, mom_20d_ex1w=+0.027, mom_5d=+0.250, mom_60d=+0.018, rel_str_market=+0.156, rev_1d=-0.034, rev_5d=-0.250, rev_intraday=+0.036, rev_overnight=-0.011, skew_60d=-0.016, sp_ttm=-0.000, trend_r2_60d=-0.001, trend_slope_60d=-0.071, turnover_20d=-0.051, turnover_ratio_5_60=+0.704, vol_20d=-0.004, vol_60d=-0.052, vol_price_corr_20d=+0.060, vol_ratio_20_60=+0.072
 
 ## Admission checklist
 
-- |ic_mean|=0.0048 < 0.02
-- |ic_t|=2.021 ok
-- ic_positive_ratio=0.471 inside (0.45,0.55) — weak direction
-- |icir|=0.059 < 0.3
-- year same-sign=67% ok
-- corr(turnover_ratio_5_60)=0.716 >= 0.7
+- |ic_mean|=0.0139 < 0.02
+- |ic_t|=6.692 ok
+- ic_positive_ratio=0.431 ok
+- |icir|=0.194 < 0.3
+- year same-sign=83% ok
 
 ---
 *Thresholds: |IC|≥0.02, |t|≥2, ICIR≥0.3, directionality outside (0.45,0.55),
-year same-sign ≥60%, pairwise |corr|<0.7 (docs/07-quant-engine.md §3.2).*
+year same-sign ≥60%, |corr|<0.7 vs already-admitted factors (docs/07-quant-engine.md §3.2).*
