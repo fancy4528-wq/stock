@@ -33,6 +33,142 @@ def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
+def _run_evaluate_l2(
+    *,
+    market: str,
+    factors_arg: str | None,
+    methods_arg: str,
+    from_db: bool,
+    synthetic: bool,
+    horizon: int,
+    n_quantiles: int,
+    out_dir: Path,
+    universe: str = "csi300",
+    start: date | None = None,
+    end: date | None = None,
+    as_of: date | None = None,
+    transform: bool = True,
+    skip_components: bool = False,
+) -> int:
+    """L2 equal-weight / IC-weighted blend of L1-admitted factors."""
+    from quantagent.quant.evaluation import (
+        load_l1_factor_input,
+        write_factor_reports,
+    )
+    from quantagent.quant.features.base import FactorInput
+    from quantagent.quant.models.baseline import (
+        CSI300_L1_ADMITTED_5Y,
+        run_l2_pipeline,
+    )
+    from quantagent.quant.evaluation.runner import synthetic_price_panel
+
+    methods_raw = [m.strip().lower() for m in methods_arg.split(",") if m.strip()]
+    methods = tuple(m for m in methods_raw if m in ("equal", "ic"))
+    if not methods:
+        print("evaluate-l2: --methods must include equal and/or ic", file=sys.stderr)
+        return 2
+
+    if factors_arg:
+        codes = [c.strip() for c in factors_arg.split(",") if c.strip()]
+    else:
+        codes = list(CSI300_L1_ADMITTED_5Y)
+
+    if synthetic and from_db:
+        print("evaluate-l2: use only one of --synthetic / --from-db", file=sys.stderr)
+        return 2
+    if not synthetic and not from_db:
+        print("evaluate-l2: require --from-db or --synthetic", file=sys.stderr)
+        return 2
+
+    report_notes: list[str] = [
+        "L2 baseline: sign-align ranks (flip if IC<0) then equal-weight "
+        "and/or |IC|-weighted mean (docs/07-quant-engine.md §5.1).",
+        f"Components: {', '.join(codes)}",
+        f"Methods: {', '.join(methods)}",
+    ]
+
+    if synthetic:
+        prices = synthetic_price_panel(n_dates=280, n_names=40, seed=7)
+        as_of_panel = prices["trade_date"].max()
+        assert isinstance(as_of_panel, date)
+        data = FactorInput(prices=prices, as_of=as_of_panel)
+        print(
+            f"market={market} mode=synthetic-l2 factors={len(codes)} "
+            f"rows={prices.height}"
+        )
+        report_notes.append("Panel: built-in synthetic OHLCV (smoke).")
+    else:
+        start_d = start or date(2021, 10, 14)
+        end_d = end or as_of
+        if end_d is None:
+            engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                raw_max = conn.execute(text("SELECT max(trade_date) FROM price_daily")).scalar()
+            if raw_max is None:
+                print("evaluate-l2: price_daily is empty", file=sys.stderr)
+                return 2
+            end_d = raw_max if isinstance(raw_max, date) else date.fromisoformat(str(raw_max)[:10])
+        as_of_d = as_of or end_d
+        data = load_l1_factor_input(
+            universe=universe,
+            start=start_d,
+            end=end_d,
+            as_of=as_of_d,
+        )
+        meta = data.meta
+        print(
+            f"market={market} mode=db-l2 universe={universe} "
+            f"rows={meta.get('n_rows')} names={meta.get('n_symbols')} "
+            f"start={meta.get('start')} end={meta.get('end')} "
+            f"factors={len(codes)}"
+        )
+        report_notes.append(
+            f"Panel: Postgres PIT prices (universe={universe}, "
+            f"start={start_d}, end={end_d})."
+        )
+        if transform:
+            report_notes.append(
+                "Transform: MAD → industry/log-mktcap neutralize → rank_pct."
+            )
+
+    results = run_l2_pipeline(
+        data,
+        codes=codes,
+        methods=methods,  # type: ignore[arg-type]
+        horizon=horizon,
+        n_quantiles=n_quantiles,
+        transform=transform,
+        evaluate_components=not skip_components,
+    )
+    ic_means = data.meta.get("l2_ic_means") or {}
+    if isinstance(ic_means, dict) and ic_means:
+        report_notes.append(
+            "Component IC means (weight/sign source): "
+            + ", ".join(f"{k}={v:+.4f}" for k, v in ic_means.items())
+        )
+
+    paths = write_factor_reports(results, out_dir, notes=report_notes)
+    # Retitle index for L2.
+    index = out_dir / "README.md"
+    if index.exists():
+        text_body = index.read_text(encoding="utf-8")
+        text_body = text_body.replace(
+            "# Factor reports (L1)",
+            "# Factor reports (L2 baseline)",
+            1,
+        )
+        index.write_text(text_body, encoding="utf-8")
+    print(f"evaluate-l2: wrote {len(paths)} reports → {out_dir}")
+    for code in ("l2_equal", "l2_ic"):
+        r = results.get(code)
+        if r is not None:
+            print(
+                f"  {code}: IC={r.ic_mean:+.4f} ICIR={r.icir:+.3f} "
+                f"t={r.ic_t_stat:+.2f} LS={r.long_short_return:+.4%}"
+            )
+    return 0
+
+
 def _run_evaluate(
     *,
     market: str,
@@ -1680,6 +1816,64 @@ def main(argv: list[str] | None = None) -> int:
         help="Directory for markdown reports",
     )
 
+    evl2 = sub.add_parser(
+        "evaluate-l2",
+        help="L2 equal-weight / IC-weighted blend of L1-admitted factors",
+    )
+    evl2.add_argument("--market", default="CN")
+    evl2.add_argument(
+        "--from-db",
+        action="store_true",
+        help="Load universe prices from Postgres (PIT) then L2",
+    )
+    evl2.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Synthetic OHLCV smoke (no DB)",
+    )
+    evl2.add_argument(
+        "--universe",
+        default="csi300",
+        help="Universe for --from-db (default: csi300)",
+    )
+    evl2.add_argument(
+        "--start",
+        type=_parse_date,
+        default=None,
+        help="Panel start (default: 2021-10-14 for 5y window)",
+    )
+    evl2.add_argument("--end", type=_parse_date, default=None)
+    evl2.add_argument("--as-of", type=_parse_date, default=None)
+    evl2.add_argument(
+        "--factors",
+        default=None,
+        help="Comma-separated component codes (default: CSI300 5y L1 admitted 7)",
+    )
+    evl2.add_argument(
+        "--methods",
+        default="equal,ic",
+        help="Comma-separated: equal, ic (default: both)",
+    )
+    evl2.add_argument("--horizon", type=int, default=5)
+    evl2.add_argument("--quantiles", type=int, default=5)
+    evl2.add_argument(
+        "--transform",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Cross-section MAD → neutralize → rank_pct (default: on)",
+    )
+    evl2.add_argument(
+        "--skip-components",
+        action="store_true",
+        help="Only evaluate combo scores (skip per-factor L1 reports)",
+    )
+    evl2.add_argument(
+        "--out",
+        type=Path,
+        default=Path("docs/factor-reports-csi300-5y-l2"),
+        help="Directory for markdown reports",
+    )
+
     pf = sub.add_parser(
         "portfolio",
         help="Equal-weight Top-N + risk check demo (W7; synthetic, no DB)",
@@ -2093,6 +2287,24 @@ def main(argv: list[str] | None = None) -> int:
             as_of=getattr(args, "as_of", None),
             export_panel=getattr(args, "export_panel", None),
             transform=bool(getattr(args, "transform", True)),
+        )
+
+    if args.command == "evaluate-l2":
+        return _run_evaluate_l2(
+            market=args.market,
+            factors_arg=args.factors,
+            methods_arg=str(args.methods),
+            from_db=bool(args.from_db),
+            synthetic=bool(args.synthetic),
+            horizon=args.horizon,
+            n_quantiles=args.quantiles,
+            out_dir=args.out,
+            universe=str(args.universe),
+            start=args.start,
+            end=args.end,
+            as_of=args.as_of,
+            transform=bool(args.transform),
+            skip_components=bool(args.skip_components),
         )
 
     if args.command == "portfolio":
