@@ -25,3 +25,15 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-09-29T11:40:05.339505+00:00 | 20260929-cn-daily | 2026-09-29 | reporter | deterministic | true |  |  |
 | 2026-09-30T10:07:17.696507+00:00 | 20260930-cn-daily | 2026-09-30 | reporter | deterministic | true |  |  |
 | 2026-09-30T10:13:07.336493+00:00 | 20260930-cn-daily | 2026-09-30 | reporter | deterministic | true |  |  |
+| 2026-10-12T11:51:23.627899+00:00 | 20261012-cn-daily | 2026-10-12 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport sector_summary   String should have at most 400 characters [type=string_too_long, in |
+| 2026-10-12T11:51:23.628905+00:00 | 20261012-cn-daily | 2026-10-12 | reporter | deterministic | true |  |  |
+| 2026-10-13T10:01:34.471962+00:00 | 20261013-cn-daily | 2026-10-13 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport sector_summary   String should have at most 400 characters [type=string_too_long, in |
+| 2026-10-13T10:01:34.471962+00:00 | 20261013-cn-daily | 2026-10-13 | reporter | deterministic | true |  |  |
+| 2026-10-14T14:17:23.100980+00:00 | 20261014-cn-daily | 2026-10-14 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport sector_summary   String should have at most 400 characters [type=string_too_long, in |
+| 2026-10-14T14:17:23.100980+00:00 | 20261014-cn-daily | 2026-10-14 | reporter | deterministic | true |  |  |
+| 2026-10-15T10:01:30.811682+00:00 | 20261015-cn-daily | 2026-10-15 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-15T10:01:30.815682+00:00 | 20261015-cn-daily | 2026-10-15 | reporter | deterministic | true |  |  |
+| 2026-10-15T14:07:58.094157+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-10-15T14:07:58.094157+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-10-15T14:13:11.118162+00:00 | 20261015-cn-daily | 2026-10-15 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-15T14:13:11.119155+00:00 | 20261015-cn-daily | 2026-10-15 | reporter | deterministic | true |  |  |

@@ -7,7 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ShadowPortfolioId = Literal["shadow_baseline", "shadow_factor", "shadow_agent"]
+ShadowPortfolioId = Literal[
+    "shadow_baseline",
+    "shadow_factor",
+    "shadow_quant",
+    "shadow_agent",
+]
 
 
 class ShadowDayRecord(BaseModel):
@@ -34,7 +39,8 @@ class ShadowConfig(BaseModel):
     initial_cash: float = 1_000_000.0
     baseline_n: int = 50
     factor_top_n: int = 15
+    quant_top_n: int = 15
     agent_top_n: int = 15
     factor_name: str = "mom_20d"
-    strategy_version: str = "mvp-w8-v1"
+    strategy_version: str = "gate3-l2-equal-v1"
     rebalance: Literal["daily"] = "daily"

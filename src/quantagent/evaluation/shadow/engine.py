@@ -40,10 +40,10 @@ class ShadowPortfolioState:
 
 
 class ShadowEngine:
-    """Runs ``shadow_baseline``, ``shadow_factor``, and ``shadow_agent``.
+    """Runs ``shadow_baseline``, ``shadow_factor``, ``shadow_quant``, ``shadow_agent``.
 
     Daily records are append-only. Step is **per-portfolio** idempotent for the
-    same ``as_of`` so newly added portfolios (e.g. ``shadow_agent``) can catch up
+    same ``as_of`` so newly added portfolios (e.g. ``shadow_quant``) can catch up
     without duplicating existing journal rows.
     """
 
@@ -73,6 +73,12 @@ class ShadowEngine:
                 cfg=self.cfg,
                 market=self.market,
                 journal=AppendOnlyJournal(root / "shadow_factor.jsonl"),
+            ),
+            "shadow_quant": ShadowPortfolioState(
+                "shadow_quant",
+                cfg=self.cfg,
+                market=self.market,
+                journal=AppendOnlyJournal(root / "shadow_quant.jsonl"),
             ),
             "shadow_agent": ShadowPortfolioState(
                 "shadow_agent",
@@ -117,6 +123,7 @@ class ShadowEngine:
         baseline_symbols: list[str],
         factor_scores: dict[str, float],
         agent_scores: dict[str, float] | None = None,
+        quant_scores: dict[str, float] | None = None,
     ) -> list[ShadowDayRecord]:
         """Rebalance shadows for one day and append journal rows.
 
@@ -124,19 +131,24 @@ class ShadowEngine:
         the cached row (with ``idempotent_skip``) without re-trading.
         """
         agent_scores = agent_scores or {}
+        quant_scores = quant_scores or {}
         ranked_factor = sorted(factor_scores.items(), key=lambda x: x[1], reverse=True)
         factor_syms = [s for s, _ in ranked_factor[: self.cfg.factor_top_n]]
+        ranked_quant = sorted(quant_scores.items(), key=lambda x: x[1], reverse=True)
+        quant_syms = [s for s, _ in ranked_quant[: self.cfg.quant_top_n]]
         ranked_agent = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
         agent_syms = [s for s, _ in ranked_agent[: self.cfg.agent_top_n]]
 
         targets: dict[ShadowPortfolioId, list[str]] = {
             "shadow_baseline": baseline_symbols[: self.cfg.baseline_n],
             "shadow_factor": factor_syms,
+            "shadow_quant": quant_syms,
             "shadow_agent": agent_syms,
         }
         extra_notes: dict[ShadowPortfolioId, list[str]] = {
             "shadow_baseline": [],
             "shadow_factor": [],
+            "shadow_quant": (["no_quant_scores"] if not quant_syms else []),
             "shadow_agent": (["no_agent_scores"] if not agent_syms else []),
         }
 
