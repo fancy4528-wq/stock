@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；**L2 等权/IC 加权基线已记录**）
+**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2 已记录；**L3 Ridge/Logistic 已记录**）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -59,8 +59,16 @@
 - 报告 [factor-reports-csi300-5y-l2](factor-reports-csi300-5y-l2/README.md)；CLI `evaluate-l2` / `make evaluate-l2`
 - Gate 3「L2 等权基线结果已记录」已满足
 
+**真实 L3 CSI300 5y（2026-10-15）**:
+- Walk-forward Ridge / Logistic（train=36m val=6m test=6m step=6m embargo=10d；3 folds；`param_search_count=18`）
+- **`l3_ridge`**: IC=+0.0500 ICIR=+0.369 t=+6.87 LS=+0.17%/期（OOS）
+- **`l3_logistic`**: IC=+0.0504 ICIR=+0.349 t=+6.50 LS=+0.17%/期（OOS）
+- 未超过 L2 等权 ICIR（L2 为全窗 in-sample；L3 为 OOS）——符合「记录对照、不跳级」要求
+- 报告 [factor-reports-csi300-5y-l3](factor-reports-csi300-5y-l3/README.md)；CLI `evaluate-l3` / `make evaluate-l3`
+- Gate 3「L3 完成」已满足（可进 L4；L4 样本外须显著优于 L2）
+
 **下一步（Gate 3）**:
-- 进入 L3（Logistic / Ridge）；L4 须样本外显著优于 L2；可选 CSI800 / 补退市股历史行业
+- 进入 L4（LightGBM + walk-forward）；须样本外显著优于 L2；可选 CSI800 / 补退市股历史行业
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
