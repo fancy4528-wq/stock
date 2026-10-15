@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -15,6 +15,8 @@ L2_UNIVERSE ?= csi300
 L2_OUT ?= docs/factor-reports-csi300-5y-l2
 L3_UNIVERSE ?= csi300
 L3_OUT ?= docs/factor-reports-csi300-5y-l3
+L4_UNIVERSE ?= csi300
+L4_OUT ?= docs/factor-reports-csi300-5y-l4
 SYMBOLS_FILE_FLAG := $(if $(SYMBOLS_FILE),--symbols-file $(SYMBOLS_FILE),)
 FROM_INDEX_FLAG := $(if $(FROM_INDEX),--from-index $(FROM_INDEX),)
 
@@ -144,6 +146,9 @@ evaluate-l2:    ## Gate3 L2：等权 / IC 加权（默认 CSI300 5y + 7 个准�
 
 evaluate-l3:    ## Gate3 L3：Walk-forward Ridge / Logistic（默认 CSI300 5y）
 	uv run python -m quantagent.cli evaluate-l3 --from-db --universe $(L3_UNIVERSE) --start $(START) --out $(L3_OUT)
+
+evaluate-l4:    ## Gate3 L4：Walk-forward LightGBM（默认 CSI300 5y；对照 L2 OOS）
+	uv run python -m quantagent.cli evaluate-l4 --from-db --universe $(L4_UNIVERSE) --start $(START) --out $(L4_OUT)
 
 portfolio:      ## 等权 Top-N + 风控 demo（synthetic，无 DB）
 	uv run python -m quantagent.cli portfolio --market CN

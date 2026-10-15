@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2 已记录；**L3 Ridge/Logistic 已记录**）
+**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -65,10 +65,19 @@
 - **`l3_logistic`**: IC=+0.0504 ICIR=+0.349 t=+6.50 LS=+0.17%/期（OOS）
 - 未超过 L2 等权 ICIR（L2 为全窗 in-sample；L3 为 OOS）——符合「记录对照、不跳级」要求
 - 报告 [factor-reports-csi300-5y-l3](factor-reports-csi300-5y-l3/README.md)；CLI `evaluate-l3` / `make evaluate-l3`
-- Gate 3「L3 完成」已满足（可进 L4；L4 样本外须显著优于 L2）
+- Gate 3「L3 完成」已满足
+
+**真实 L4 CSI300 5y（2026-10-15）**:
+- Walk-forward LightGBM（同 WF；3 presets + early stopping；`param_search_count=9`；importance_stability=+0.738）
+- 公平对照：`l2_equal_oos` = 各折用 **train 窗 IC 符号** 的等权组合，同一 test 窗评估
+- **`l4_lgbm`**: IC=+0.0416 ICIR=+0.347 t=+6.46 LS=+0.17%/期（OOS）
+- **`l2_equal_oos`**: IC=+0.0539 ICIR=+0.414 t=+7.72 LS=+0.24%/期（OOS）
+- **Gate「L4 样本外优于 L2」未通过**（+0.347 < +0.414）→ 按 ADR-0005 **采用 L2 等权**，不往 L5/L6/L7 爬
+- 报告 [factor-reports-csi300-5y-l4](factor-reports-csi300-5y-l4/README.md)；CLI `evaluate-l4` / `make evaluate-l4`
 
 **下一步（Gate 3）**:
-- 进入 L4（LightGBM + walk-forward）；须样本外显著优于 L2；可选 CSI800 / 补退市股历史行业
+- 量化信号以 L2 等权为工作模型；推进 `shadow_quant` / Feature Store / 封存期锁定
+- 可选：CSI800、补退市股历史行业；**不**为刷过 L2 而加大 L4 搜参
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
