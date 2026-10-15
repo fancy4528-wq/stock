@@ -338,6 +338,180 @@ def _run_evaluate_l3(
     return 0
 
 
+def _run_evaluate_l4(
+    *,
+    market: str,
+    factors_arg: str | None,
+    from_db: bool,
+    synthetic: bool,
+    horizon: int,
+    n_quantiles: int,
+    out_dir: Path,
+    universe: str = "csi300",
+    start: date | None = None,
+    end: date | None = None,
+    as_of: date | None = None,
+    transform: bool = True,
+    train_months: int = 36,
+    val_months: int = 6,
+    test_months: int = 6,
+    step_months: int = 6,
+    embargo_days: int = 10,
+    compare_l2: bool = True,
+) -> int:
+    """L4 walk-forward LightGBM on L1-admitted factors."""
+    from quantagent.quant.evaluation import (
+        load_l1_factor_input,
+        write_factor_reports,
+    )
+    from quantagent.quant.features.base import FactorInput
+    from quantagent.quant.models.baseline import CSI300_L1_ADMITTED_5Y
+    from quantagent.quant.models.gbdt import run_l4_pipeline
+    from quantagent.quant.evaluation.runner import synthetic_price_panel
+    from quantagent.quant.training import WalkForwardConfig
+
+    if factors_arg:
+        codes = [c.strip() for c in factors_arg.split(",") if c.strip()]
+    else:
+        codes = list(CSI300_L1_ADMITTED_5Y)
+
+    if synthetic and from_db:
+        print("evaluate-l4: use only one of --synthetic / --from-db", file=sys.stderr)
+        return 2
+    if not synthetic and not from_db:
+        print("evaluate-l4: require --from-db or --synthetic", file=sys.stderr)
+        return 2
+
+    wf = WalkForwardConfig(
+        train_months=train_months,
+        val_months=val_months,
+        test_months=test_months,
+        step_months=step_months,
+        embargo_days=embargo_days,
+    )
+    report_notes: list[str] = [
+        "L4: walk-forward LightGBM on L1-admitted rank features "
+        "(docs/07-quant-engine.md §5.1 / §6.1). Gate: OOS must beat L2.",
+        f"Components: {', '.join(codes)}",
+        (
+            f"Walk-forward: train={wf.train_months}m val={wf.val_months}m "
+            f"test={wf.test_months}m step={wf.step_months}m "
+            f"embargo={wf.embargo_days}d"
+        ),
+        "Hyperparams: 3 presets (leaves/lr/min_data/fractions/L2) + early stopping; "
+        "select by val Spearman IC.",
+    ]
+
+    if synthetic:
+        prices = synthetic_price_panel(n_dates=1100, n_names=40, seed=7)
+        as_of_panel = prices["trade_date"].max()
+        assert isinstance(as_of_panel, date)
+        data = FactorInput(prices=prices, as_of=as_of_panel)
+        print(
+            f"market={market} mode=synthetic-l4 factors={len(codes)} "
+            f"rows={prices.height}"
+        )
+        report_notes.append("Panel: built-in synthetic OHLCV (smoke).")
+    else:
+        start_d = start or date(2021, 10, 14)
+        end_d = end or as_of
+        if end_d is None:
+            engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+            with engine.connect() as conn:
+                raw_max = conn.execute(text("SELECT max(trade_date) FROM price_daily")).scalar()
+            if raw_max is None:
+                print("evaluate-l4: price_daily is empty", file=sys.stderr)
+                return 2
+            end_d = raw_max if isinstance(raw_max, date) else date.fromisoformat(str(raw_max)[:10])
+        as_of_d = as_of or end_d
+        data = load_l1_factor_input(
+            universe=universe,
+            start=start_d,
+            end=end_d,
+            as_of=as_of_d,
+        )
+        meta = data.meta
+        print(
+            f"market={market} mode=db-l4 universe={universe} "
+            f"rows={meta.get('n_rows')} names={meta.get('n_symbols')} "
+            f"start={meta.get('start')} end={meta.get('end')} "
+            f"factors={len(codes)}"
+        )
+        report_notes.append(
+            f"Panel: Postgres PIT prices (universe={universe}, "
+            f"start={start_d}, end={end_d})."
+        )
+        if transform:
+            report_notes.append(
+                "Transform: MAD → industry/log-mktcap neutralize → rank_pct."
+            )
+
+    results = run_l4_pipeline(
+        data,
+        codes=codes,
+        horizon=horizon,
+        n_quantiles=n_quantiles,
+        transform=transform,
+        walk_forward=wf,
+        compare_l2=compare_l2,
+    )
+    l4_meta = data.meta.get("l4") or {}
+    if isinstance(l4_meta, dict):
+        report_notes.append(
+            f"Folds: {l4_meta.get('n_folds')} | "
+            f"param_search_count={l4_meta.get('param_search_count')} | "
+            f"importance_stability={l4_meta.get('importance_stability')}"
+        )
+        if l4_meta.get("l2_equal_oos_icir") is not None:
+            report_notes.append(
+                f"Fair OOS: l4_icir={l4_meta.get('l4_icir'):+.3f} vs "
+                f"l2_equal_oos_icir={l4_meta.get('l2_equal_oos_icir'):+.3f} → "
+                f"{'beats L2' if l4_meta.get('beats_l2_oos') else 'does not beat L2'}"
+            )
+        imp = l4_meta.get("mean_importance") or {}
+        if isinstance(imp, dict) and imp:
+            top = sorted(imp.items(), key=lambda kv: -abs(float(kv[1])))[:5]
+            report_notes.append(
+                "Mean gain importance: "
+                + ", ".join(f"{k}={v:.1f}" for k, v in top)
+            )
+
+    paths = write_factor_reports(results, out_dir, notes=report_notes)
+    index = out_dir / "README.md"
+    if index.exists():
+        text_body = index.read_text(encoding="utf-8")
+        text_body = text_body.replace(
+            "# Factor reports (L1)",
+            "# Factor reports (L4 LightGBM)",
+            1,
+        )
+        text_body = text_body.replace(
+            "Factors evaluated:",
+            "Models evaluated:",
+            1,
+        )
+        text_body = text_body.replace(
+            "| Factor |",
+            "| Model |",
+            1,
+        )
+        text_body = text_body.replace(
+            "L1 admission PASS",
+            "metric PASS (informational)",
+            1,
+        )
+        index.write_text(text_body, encoding="utf-8")
+    print(f"evaluate-l4: wrote {len(paths)} reports → {out_dir}")
+    for code in ("l4_lgbm", "l2_equal_oos"):
+        r = results.get(code)
+        if r is not None:
+            print(
+                f"  {code}: IC={r.ic_mean:+.4f} ICIR={r.icir:+.3f} "
+                f"t={r.ic_t_stat:+.2f} LS={r.long_short_return:+.4%}"
+            )
+    return 0
+
+
 def _run_evaluate(
     *,
     market: str,
@@ -2106,6 +2280,70 @@ def main(argv: list[str] | None = None) -> int:
         help="Directory for markdown reports",
     )
 
+    evl4 = sub.add_parser(
+        "evaluate-l4",
+        help="L4 walk-forward LightGBM on L1-admitted factors",
+    )
+    evl4.add_argument("--market", default="CN")
+    evl4.add_argument(
+        "--from-db",
+        action="store_true",
+        help="Load universe prices from Postgres (PIT) then L4",
+    )
+    evl4.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Synthetic OHLCV smoke (no DB)",
+    )
+    evl4.add_argument(
+        "--universe",
+        default="csi300",
+        help="Universe for --from-db (default: csi300)",
+    )
+    evl4.add_argument(
+        "--start",
+        type=_parse_date,
+        default=None,
+        help="Panel start (default: 2021-10-14 for 5y window)",
+    )
+    evl4.add_argument("--end", type=_parse_date, default=None)
+    evl4.add_argument("--as-of", type=_parse_date, default=None)
+    evl4.add_argument(
+        "--factors",
+        default=None,
+        help="Comma-separated component codes (default: CSI300 5y L1 admitted 7)",
+    )
+    evl4.add_argument("--horizon", type=int, default=5)
+    evl4.add_argument("--quantiles", type=int, default=5)
+    evl4.add_argument(
+        "--transform",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Cross-section MAD → neutralize → rank_pct (default: on)",
+    )
+    evl4.add_argument("--train-months", type=int, default=36)
+    evl4.add_argument("--val-months", type=int, default=6)
+    evl4.add_argument("--test-months", type=int, default=6)
+    evl4.add_argument("--step-months", type=int, default=6)
+    evl4.add_argument(
+        "--embargo-days",
+        type=int,
+        default=10,
+        help="Gap after train and after val (default: 10 ≥ horizon)",
+    )
+    evl4.add_argument(
+        "--compare-l2",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Also evaluate walk-forward L2 equal OOS as fair baseline (default: on)",
+    )
+    evl4.add_argument(
+        "--out",
+        type=Path,
+        default=Path("docs/factor-reports-csi300-5y-l4"),
+        help="Directory for markdown reports",
+    )
+
     pf = sub.add_parser(
         "portfolio",
         help="Equal-weight Top-N + risk check demo (W7; synthetic, no DB)",
@@ -2559,6 +2797,28 @@ def main(argv: list[str] | None = None) -> int:
             test_months=int(args.test_months),
             step_months=int(args.step_months),
             embargo_days=int(args.embargo_days),
+        )
+
+    if args.command == "evaluate-l4":
+        return _run_evaluate_l4(
+            market=args.market,
+            factors_arg=args.factors,
+            from_db=bool(args.from_db),
+            synthetic=bool(args.synthetic),
+            horizon=args.horizon,
+            n_quantiles=args.quantiles,
+            out_dir=args.out,
+            universe=str(args.universe),
+            start=args.start,
+            end=args.end,
+            as_of=args.as_of,
+            transform=bool(args.transform),
+            train_months=int(args.train_months),
+            val_months=int(args.val_months),
+            test_months=int(args.test_months),
+            step_months=int(args.step_months),
+            embargo_days=int(args.embargo_days),
+            compare_l2=bool(args.compare_l2),
         )
 
     if args.command == "portfolio":
