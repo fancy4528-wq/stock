@@ -41,6 +41,7 @@ async def test_run_once_synthetic(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert "A股市场日报" in text
     assert (shadow / "shadow_baseline.jsonl").exists()
+    assert (shadow / "shadow_quant.jsonl").exists()
 
 
 def test_build_scheduler_registers_live_job() -> None:

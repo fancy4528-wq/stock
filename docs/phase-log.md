@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**）
+**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**；`shadow_quant` 已接入）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -75,8 +75,14 @@
 - **Gate「L4 样本外优于 L2」未通过**（+0.347 < +0.414）→ 按 ADR-0005 **采用 L2 等权**，不往 L5/L6/L7 爬
 - 报告 [factor-reports-csi300-5y-l4](factor-reports-csi300-5y-l4/README.md)；CLI `evaluate-l4` / `make evaluate-l4`
 
+**真实 shadow_quant（2026-10-15）**:
+- 工作模型：CSI300 5y 准入 7 因子、冻结 IC 符号、截面变换后等权（`l2_equal`）
+- `ShadowEngine` 新增组合 `shadow_quant`（Top-N，与 baseline/factor/agent 并行；按日幂等可追赶）
+- 日报 live 路径 soft-compute L2 分数；失败记 degraded notes，不阻断流水线
+- `strategy_version=gate3-l2-equal-v1`；CLI/配置见 `config/execution/cn_shadow.yaml`
+
 **下一步（Gate 3）**:
-- 量化信号以 L2 等权为工作模型；推进 `shadow_quant` / Feature Store / 封存期锁定
+- 推进 Feature Store / 封存期锁定（HoldoutGuard）；`shadow_quant` 已随 live 日报记账
 - 可选：CSI800、补退市股历史行业；**不**为刷过 L2 而加大 L4 搜参
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)

@@ -239,3 +239,15 @@ run_id=`20260930-cn-daily` mode=`llm` overall=PASS
 | total_usd_vs_daily_cap | $0.0092 | <= $1.50 | PASS |
 | llm_path | llm | llm (not heuristic) | PASS |
 
+| 2026-10-12T11:51:23.627899+00:00 | 20261012-cn-daily | reporter | daily_research | deepseek-flash | llm | 1958 | 1086 | 0.0006 |
+| 2026-10-12T11:51:23.628905+00:00 | 20261012-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-13T10:01:34.471962+00:00 | 20261013-cn-daily | reporter | daily_research | deepseek-flash | llm | 1968 | 1223 | 0.0006 |
+| 2026-10-13T10:01:34.471962+00:00 | 20261013-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-14T14:17:23.099972+00:00 | 20261014-cn-daily | reporter | daily_research | deepseek-flash | llm | 1958 | 1194 | 0.0006 |
+| 2026-10-14T14:17:23.100980+00:00 | 20261014-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-15T10:01:30.809224+00:00 | 20261015-cn-daily | reporter | daily_research | deepseek-flash | llm | 1956 | 1184 | 0.0006 |
+| 2026-10-15T10:01:30.815682+00:00 | 20261015-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-15T14:07:58.094157+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1283 | 1138 | 0.0005 |
+| 2026-10-15T14:07:58.094157+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-15T14:13:11.118162+00:00 | 20261015-cn-daily | reporter | daily_research | deepseek-flash | llm | 2016 | 1009 | 0.0006 |
+| 2026-10-15T14:13:11.119155+00:00 | 20261015-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |

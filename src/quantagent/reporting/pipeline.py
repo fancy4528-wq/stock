@@ -24,6 +24,7 @@ from quantagent.agents.tools.market import (
 )
 from quantagent.core.repository.pit import PITRepository
 from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine, scores_from_brief
+from quantagent.evaluation.shadow.quant_signals import load_l2_equal_scores
 from quantagent.evaluation.shadow.stats import summarize_unfilled
 from quantagent.evaluation.shadow.types import ShadowDayRecord
 from quantagent.execution.broker.simulated import PriceBar
@@ -187,6 +188,29 @@ def _synthetic_agent_scores(symbols: list[str]) -> dict[str, float]:
     return {sym: float((i * 7 + 3) % max(n, 1)) / max(n, 1) for i, sym in enumerate(symbols)}
 
 
+def _synthetic_quant_scores(symbols: list[str]) -> dict[str, float]:
+    """Deterministic L2-like ranking distinct from factor and agent Top-N."""
+    n = len(symbols)
+    return {sym: float((i * 11 + 5) % max(n, 1)) / max(n, 1) for i, sym in enumerate(symbols)}
+
+
+def _live_quant_scores(
+    *,
+    as_of: date,
+    universe_code: str,
+    repo: PITRepository,
+) -> tuple[dict[str, float], list[str]]:
+    """Soft-compute L2 equal-weight scores for ``shadow_quant``."""
+    try:
+        scores = load_l2_equal_scores(as_of=as_of, universe=universe_code, repo=repo)
+        if not scores:
+            return {}, ["shadow_quant: empty l2 scores"]
+        return scores, []
+    except Exception as exc:  # noqa: BLE001 — soft-fail into degraded notes
+        logger.warning("shadow_quant L2 scores failed: %s", exc)
+        return {}, [f"shadow_quant: failed ({type(exc).__name__}: {exc})"]
+
+
 async def _live_agent_scores(
     *,
     as_of: date,
@@ -242,8 +266,9 @@ async def run_daily_pipeline(
     LLM: ``build_llm_client()`` uses NullLLMClient unless ``LLM_API_KEY`` is set.
     Budget: ADR-0010 ``daily_research`` pool via ``TokenBudget`` (pre-call reserve).
 
-    Live path soft-runs the research DAG (heuristic, ``use_llm=False``) to feed
-    ``shadow_agent`` Top-N; failures become degraded notes, not hard stops.
+    Live path soft-runs L2 equal-weight scores for ``shadow_quant`` and the
+    research DAG (heuristic, ``use_llm=False``) for ``shadow_agent`` Top-N;
+    failures become degraded notes, not hard stops.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -262,10 +287,13 @@ async def run_daily_pipeline(
         symbols = synthetic_universe(50)
         bars = build_synthetic_bars(symbols, as_of)
         scores = {sym: 1.0 - i * 0.01 for i, sym in enumerate(symbols)}
+        quant_scores = _synthetic_quant_scores(symbols)
         agent_scores = _synthetic_agent_scores(symbols)
         engine = ShadowEngine(
             shadow_dir,
-            cfg=ShadowConfig(baseline_n=50, factor_top_n=15, agent_top_n=15),
+            cfg=ShadowConfig(
+                baseline_n=50, factor_top_n=15, quant_top_n=15, agent_top_n=15
+            ),
             code_version="dev",
         )
         engine.load_history_metrics()
@@ -275,6 +303,7 @@ async def run_daily_pipeline(
             bars=bars,
             baseline_symbols=symbols,
             factor_scores=scores,
+            quant_scores=quant_scores,
             agent_scores=agent_scores,
         )
         reject_stats = _reject_stats(shadow_recs)
@@ -308,6 +337,11 @@ async def run_daily_pipeline(
                 update={"as_of": as_of, "run_id": run_id}
             ),
         )
+        quant_scores, quant_notes = _live_quant_scores(
+            as_of=as_of,
+            universe_code=universe_code,
+            repo=pit,
+        )
         agent_scores, agent_notes = await _live_agent_scores(
             as_of=as_of,
             market=market,
@@ -317,12 +351,14 @@ async def run_daily_pipeline(
         )
         n = len(live.symbols)
         n_scored = len(live.factor_scores)
+        n_quant = len(quant_scores)
         n_agent = len(agent_scores)
         engine = ShadowEngine(
             shadow_dir,
             cfg=ShadowConfig(
                 baseline_n=max(n, 1),
                 factor_top_n=min(15, max(n_scored, 1)),
+                quant_top_n=min(15, max(n_quant, 1)) if n_quant else 15,
                 agent_top_n=min(15, max(n_agent, 1)) if n_agent else 15,
             ),
             code_version="dev",
@@ -334,10 +370,15 @@ async def run_daily_pipeline(
             bars=live.bars,
             baseline_symbols=live.symbols,
             factor_scores=live.factor_scores,
+            quant_scores=quant_scores,
             agent_scores=agent_scores,
         )
         reject_stats = _reject_stats(shadow_recs)
-        risk = _shadow_notes(shadow_recs) + [RiskNote(text=n) for n in agent_notes]
+        risk = (
+            _shadow_notes(shadow_recs)
+            + [RiskNote(text=n) for n in quant_notes]
+            + [RiskNote(text=n) for n in agent_notes]
+        )
         bundle = finalize_live_bundle(
             live,
             shadow_rows=_shadow_rows_from_recs(shadow_recs),

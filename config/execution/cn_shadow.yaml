@@ -1,8 +1,10 @@
-# CN shadow execution defaults (P1)
+# CN shadow execution defaults (P1 + Gate 3 shadow_quant)
 
 initial_cash: 1000000
 baseline_n: 50
 factor_top_n: 15
+quant_top_n: 15
+agent_top_n: 15
 factor_name: mom_20d
-strategy_version: mvp-w8-v1
+strategy_version: gate3-l2-equal-v1
 rebalance: daily
