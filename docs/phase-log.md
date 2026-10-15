@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33** ≥5 因子门槛已满足；L2 未启动）
+**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；**L2 等权/IC 加权基线已记录**）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -52,8 +52,15 @@
 - 报告 [factor-reports-csi300-5y](factor-reports-csi300-5y/README.md)
 - Gate 3「≥5 个达标因子」已满足；5y 为主评估窗，10y 作稳健性对照
 
+**真实 L2 CSI300 5y（2026-10-14）**:
+- 7 个准入因子：符号对齐（负 IC 则 `1-rank`）后等权 / `|IC|` 加权
+- **`l2_equal`**: IC=+0.0606 ICIR=+0.514 t=+17.9 LS=+0.33%/期
+- **`l2_ic`**: IC=+0.0610 ICIR=+0.493 t=+17.1 LS=+0.32%/期（略逊于等权 ICIR）
+- 报告 [factor-reports-csi300-5y-l2](factor-reports-csi300-5y-l2/README.md)；CLI `evaluate-l2` / `make evaluate-l2`
+- Gate 3「L2 等权基线结果已记录」已满足
+
 **下一步（Gate 3）**:
-- 进入 L2 等权 / IC 加权基线；可选 CSI800 / 补退市股历史行业
+- 进入 L3（Logistic / Ridge）；L4 须样本外显著优于 L2；可选 CSI800 / 补退市股历史行业
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
