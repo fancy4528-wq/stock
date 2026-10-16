@@ -16,6 +16,7 @@ from quantagent.quant.evaluation.types import FactorTestResult
 from quantagent.quant.features.base import FactorInput, entity_col
 from quantagent.quant.labels.targets import attach_forward_returns, forward_return_col
 from quantagent.quant.models.baseline import CSI300_L1_ADMITTED_5Y, build_l2_panel
+from quantagent.quant.training.holdout_guard import HoldoutGuard
 from quantagent.quant.training.walk_forward import (
     WalkForwardConfig,
     WalkForwardFold,
@@ -241,6 +242,7 @@ def walk_forward_scores(
     method: L3Method,
     horizon: int = 5,
     wf: WalkForwardConfig | None = None,
+    guard: HoldoutGuard | None = None,
     date_col: str = "trade_date",
     price_col: str = "close",
 ) -> tuple[pl.DataFrame, list[L3FoldDiag], int]:
@@ -252,7 +254,7 @@ def walk_forward_scores(
     panel_end = dates.max()
     assert isinstance(panel_start, date) and isinstance(panel_end, date)
 
-    folds = generate_folds(panel_start, panel_end, wf)
+    folds = generate_folds(panel_start, panel_end, wf, guard=guard)
     if not folds:
         raise ValueError(
             f"no walk-forward folds in [{panel_start}, {panel_end}] "
@@ -296,6 +298,7 @@ def run_l3_pipeline(
     min_names: int = 5,
     transform: bool = True,
     walk_forward: WalkForwardConfig | None = None,
+    guard: HoldoutGuard | None = None,
 ) -> dict[str, FactorTestResult]:
     """Build L3 Ridge / Logistic OOS scores and evaluate like L1/L2 factors."""
     selected = list(codes) if codes is not None else list(CSI300_L1_ADMITTED_5Y)
@@ -329,6 +332,7 @@ def run_l3_pipeline(
             method=method,
             horizon=horizon,
             wf=wf,
+            guard=guard,
         )
         param_search_count += n_search
         all_diags.extend(diags)
@@ -373,7 +377,9 @@ def run_l3_pipeline(
             "test_months": wf.test_months,
             "step_months": wf.step_months,
             "embargo_days": wf.embargo_days,
-            "holdout_start": None,
+            "holdout_start": (
+                wf.holdout_start.isoformat() if wf.holdout_start else None
+            ),
         },
     )
     data.meta["l3"] = {
