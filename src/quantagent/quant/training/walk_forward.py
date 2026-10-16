@@ -8,6 +8,8 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel
 
+from quantagent.quant.training.holdout_guard import HoldoutGuard
+
 
 def add_months(d: date, months: int) -> date:
     """Add calendar months, clamping the day to the target month length."""
@@ -56,17 +58,30 @@ def generate_folds(
     panel_start: date,
     panel_end: date,
     config: WalkForwardConfig | None = None,
+    *,
+    guard: HoldoutGuard | None = None,
 ) -> list[WalkForwardFold]:
     """Generate expanding-start rolling folds that fit inside ``[panel_start, panel_end]``.
 
     Layout per fold (embargo after train and after val)::
 
         [===== train =====]|emb|[== val ==]|emb|[== test ==]
+
+    When ``holdout_start`` or ``guard`` is set, every fold ends the day before
+    the seal. Passing ``guard`` does not call ``check_access``.
     """
     cfg = config or WalkForwardConfig()
+    holdout = cfg.holdout_start
+    if guard is not None:
+        if holdout is not None and holdout != guard.holdout_start:
+            raise ValueError(
+                f"holdout_start mismatch: config {holdout.isoformat()} "
+                f"vs guard {guard.holdout_start.isoformat()}"
+            )
+        holdout = guard.holdout_start
     end_cap = panel_end
-    if cfg.holdout_start is not None:
-        end_cap = min(end_cap, cfg.holdout_start - timedelta(days=1))
+    if holdout is not None:
+        end_cap = min(end_cap, holdout - timedelta(days=1))
 
     folds: list[WalkForwardFold] = []
     fold_id = 0
@@ -106,4 +121,9 @@ def generate_folds(
         if cursor >= end_cap:
             break
 
+    if guard is not None:
+        for fold in folds:
+            guard.assert_excluded(fold.train_end)
+            guard.assert_excluded(fold.val_end)
+            guard.assert_excluded(fold.test_end)
     return folds

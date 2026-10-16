@@ -1,0 +1,5 @@
+# Frozen after L1–L4 model selection. Panel used through 2026-10-13.
+# Dates on or after holdout_start may be read once via HoldoutGuard.check_access.
+market: CN
+holdout_start: 2026-10-14
+log_path: data/holdout/cn_uses.jsonl

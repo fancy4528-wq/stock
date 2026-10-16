@@ -21,6 +21,7 @@ from quantagent.quant.models.baseline import (
     combine_equal_weight,
     estimate_ic_means,
 )
+from quantagent.quant.training.holdout_guard import HoldoutGuard
 from quantagent.quant.training.walk_forward import (
     WalkForwardConfig,
     WalkForwardFold,
@@ -246,6 +247,7 @@ def walk_forward_lgbm_scores(
     *,
     horizon: int = 5,
     wf: WalkForwardConfig | None = None,
+    guard: HoldoutGuard | None = None,
     date_col: str = "trade_date",
     price_col: str = "close",
 ) -> tuple[pl.DataFrame, list[L4FoldDiag], int, list[WalkForwardFold]]:
@@ -256,7 +258,7 @@ def walk_forward_lgbm_scores(
     panel_end = dates.max()
     assert isinstance(panel_start, date) and isinstance(panel_end, date)
 
-    folds = generate_folds(panel_start, panel_end, wf)
+    folds = generate_folds(panel_start, panel_end, wf, guard=guard)
     if not folds:
         raise ValueError(
             f"no walk-forward folds in [{panel_start}, {panel_end}] "
@@ -332,6 +334,7 @@ def run_l4_pipeline(
     min_names: int = 5,
     transform: bool = True,
     walk_forward: WalkForwardConfig | None = None,
+    guard: HoldoutGuard | None = None,
     compare_l2: bool = True,
 ) -> dict[str, FactorTestResult]:
     """Build L4 LightGBM OOS scores (+ optional fair L2 OOS) and evaluate."""
@@ -351,6 +354,7 @@ def run_l4_pipeline(
         selected,
         horizon=horizon,
         wf=wf,
+        guard=guard,
     )
     stab = importance_stability(diags, selected)
     print(
@@ -449,6 +453,9 @@ def run_l4_pipeline(
             "test_months": wf.test_months,
             "step_months": wf.step_months,
             "embargo_days": wf.embargo_days,
+            "holdout_start": (
+                wf.holdout_start.isoformat() if wf.holdout_start else None
+            ),
         },
         "folds": [
             {

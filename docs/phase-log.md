@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**；`shadow_quant` 已接入）
+**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**；`shadow_quant` 已接入；封存期已锁定且未使用）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -81,8 +81,15 @@
 - 日报 live 路径 soft-compute L2 分数；失败记 degraded notes，不阻断流水线
 - `strategy_version=gate3-l2-equal-v1`；CLI/配置见 `config/execution/cn_shadow.yaml`
 
+**封存期（2026-10-16）**:
+- `HoldoutGuard`：`holdout_start=2026-10-14`（L1–L4 面板止于 2026-10-13 的次日）；使用日志 `data/holdout/cn_uses.jsonl`
+- 第一次 `check_access` 写入日志并放行，第二次抛 `HoldoutViolation`；日志损坏则拒绝访问
+- `generate_folds` 在封存日起截断到前一日，并可用 `assert_excluded` 复核，不消耗那一次使用权
+- `evaluate-l3` / `evaluate-l4` 的数据库路径加载该配置；synthetic 不挂封存期
+- Gate 3「封存期未被使用」：日志尚无记录
+
 **下一步（Gate 3）**:
-- 推进 Feature Store / 封存期锁定（HoldoutGuard）；`shadow_quant` 已随 live 日报记账
+- 推进 Feature Store（Parquet + DuckDB）；`shadow_quant` 已随 live 日报记账
 - 可选：CSI800、补退市股历史行业；**不**为刷过 L2 而加大 L4 搜参
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)

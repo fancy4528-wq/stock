@@ -229,6 +229,12 @@ def _run_evaluate_l3(
         step_months=step_months,
         embargo_days=embargo_days,
     )
+    guard = None
+    if not synthetic:
+        from quantagent.quant.training import load_holdout_guard
+
+        guard = load_holdout_guard(market)
+        wf = wf.model_copy(update={"holdout_start": guard.holdout_start})
     report_notes: list[str] = [
         "L3: walk-forward Ridge / Logistic on L1-admitted rank features "
         "(docs/07-quant-engine.md §5.1 / §6.1).",
@@ -240,6 +246,11 @@ def _run_evaluate_l3(
             f"embargo={wf.embargo_days}d"
         ),
     ]
+    if guard is not None:
+        report_notes.append(
+            f"Holdout: folds end before {guard.holdout_start.isoformat()} "
+            f"(uses={len(guard.uses())})."
+        )
 
     if synthetic:
         # Long enough for ≥1 fold with default 36/6/6 (need ~4y+).
@@ -294,6 +305,7 @@ def _run_evaluate_l3(
         n_quantiles=n_quantiles,
         transform=transform,
         walk_forward=wf,
+        guard=guard,
     )
     l3_meta = data.meta.get("l3") or {}
     if isinstance(l3_meta, dict):
@@ -389,6 +401,12 @@ def _run_evaluate_l4(
         step_months=step_months,
         embargo_days=embargo_days,
     )
+    guard = None
+    if not synthetic:
+        from quantagent.quant.training import load_holdout_guard
+
+        guard = load_holdout_guard(market)
+        wf = wf.model_copy(update={"holdout_start": guard.holdout_start})
     report_notes: list[str] = [
         "L4: walk-forward LightGBM on L1-admitted rank features "
         "(docs/07-quant-engine.md §5.1 / §6.1). Gate: OOS must beat L2.",
@@ -401,6 +419,11 @@ def _run_evaluate_l4(
         "Hyperparams: 3 presets (leaves/lr/min_data/fractions/L2) + early stopping; "
         "select by val Spearman IC.",
     ]
+    if guard is not None:
+        report_notes.append(
+            f"Holdout: folds end before {guard.holdout_start.isoformat()} "
+            f"(uses={len(guard.uses())})."
+        )
 
     if synthetic:
         prices = synthetic_price_panel(n_dates=1100, n_names=40, seed=7)
@@ -453,6 +476,7 @@ def _run_evaluate_l4(
         n_quantiles=n_quantiles,
         transform=transform,
         walk_forward=wf,
+        guard=guard,
         compare_l2=compare_l2,
     )
     l4_meta = data.meta.get("l4") or {}
