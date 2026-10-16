@@ -37,3 +37,5 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-10-15T14:07:58.094157+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
 | 2026-10-15T14:13:11.118162+00:00 | 20261015-cn-daily | 2026-10-15 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
 | 2026-10-15T14:13:11.119155+00:00 | 20261015-cn-daily | 2026-10-15 | reporter | deterministic | true |  |  |
+| 2026-10-16T10:02:25.320260+00:00 | 20261016-cn-daily | 2026-10-16 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport sector_summary   String should have at most 400 characters [type=string_too_long, in |
+| 2026-10-16T10:02:25.320260+00:00 | 20261016-cn-daily | 2026-10-16 | reporter | deterministic | true |  |  |

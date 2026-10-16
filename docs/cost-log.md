@@ -251,3 +251,5 @@ run_id=`20260930-cn-daily` mode=`llm` overall=PASS
 | 2026-10-15T14:07:58.094157+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
 | 2026-10-15T14:13:11.118162+00:00 | 20261015-cn-daily | reporter | daily_research | deepseek-flash | llm | 2016 | 1009 | 0.0006 |
 | 2026-10-15T14:13:11.119155+00:00 | 20261015-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-16T10:02:25.320260+00:00 | 20261016-cn-daily | reporter | daily_research | deepseek-flash | llm | 2026 | 1238 | 0.0006 |
+| 2026-10-16T10:02:25.320260+00:00 | 20261016-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
