@@ -4,7 +4,7 @@
 
 ## P3 (2026-10-11 ~ )
 
-**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**；`shadow_quant` 已接入；封存期已锁定且未使用）
+**Gate 3 状态**: 进行中（CSI300 5y 准入 **7/33**；L2/L3/L4 已记录；**L4 未优于 L2 OOS → 采用 L2**；`shadow_quant` 已接入；封存期已锁定且未使用；Feature Store 已落地）
 
 **已完成**:
 - 因子库扩至 33（OHLCV + 简单估值）；L1 流水线与 synthetic 报告
@@ -88,8 +88,14 @@
 - `evaluate-l3` / `evaluate-l4` 的数据库路径加载该配置；synthetic 不挂封存期
 - Gate 3「封存期未被使用」：日志尚无记录
 
-**下一步（Gate 3）**:
-- 推进 Feature Store（Parquet + DuckDB）；`shadow_quant` 已随 live 日报记账
+**Feature Store（2026-10-16）**:
+- 按年分区 Parquet：`data/features/{market}/panel/year=YYYY/part-0.parquet`，元数据 `meta/factor_versions.json`
+- 行上 `code_version` 是因子版本映射的哈希；`append` 只写一个 `trade_date`，版本不一致则拒绝并要求 `rebuild`
+- `load_panel` 用 DuckDB 读取，`end > as_of` 直接拒绝
+- `append_factors` / `rebuild_factors` 在计算前丢掉 `as_of` 之后的行情，增量只落库当天
+
+**下一步**:
+- Gate 3 工程项已齐（L4 样本外未优于 L2，按 ADR-0005 采用 L2）。下一步进入 Gate 4 回测可信性
 - 可选：CSI800、补退市股历史行业；**不**为刷过 L2 而加大 L4 搜参
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
