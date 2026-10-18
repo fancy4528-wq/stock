@@ -2008,6 +2008,56 @@ def _run_ensure_survivorship(*, code: str) -> int:
     return 0
 
 
+def _run_sync_delist_dates(*, code: str) -> int:
+    from sqlalchemy import create_engine
+
+    from quantagent.core.universe.survivorship import (
+        apply_delist_records,
+        former_members_without_delist_date,
+        prune_snapshots_on_or_after_delist,
+    )
+    from quantagent.data.collectors.baostock.basic import fetch_delist_records
+
+    engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+    symbols = former_members_without_delist_date(engine, universe=code)
+    print(f"sync-delist-dates universe={code} candidates={len(symbols)}", flush=True)
+    records = fetch_delist_records(symbols)
+    updated = apply_delist_records(engine, records)
+    pruned = prune_snapshots_on_or_after_delist(engine, universe=code)
+    print(
+        f"sync-delist-dates universe={code} recorded={len(updated)} "
+        f"symbols={updated} pruned_snapshots={pruned}",
+        flush=True,
+    )
+    return 0
+
+
+def _run_check_survivorship(*, code: str, as_of: date, until: date) -> int:
+    from quantagent.core.repository.pit import PITRepository
+    from quantagent.core.universe.survivorship import (
+        SurvivorshipBiasError,
+        check_universe_contains_delisted,
+    )
+
+    try:
+        report = check_universe_contains_delisted(
+            PITRepository(),
+            name=code,
+            as_of=as_of,
+            until=until,
+        )
+    except SurvivorshipBiasError as exc:
+        print(f"FAIL {exc}", flush=True)
+        return 1
+    print(
+        f"survivorship universe={report.universe} as_of={report.as_of.isoformat()} "
+        f"until={report.until.isoformat()} n_universe={report.n_universe} "
+        f"n_later_delisted={len(report.symbols)} symbols={report.symbols}",
+        flush=True,
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="quantagent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2493,6 +2543,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     surv.add_argument("--universe", default="mvp_cn_50")
 
+    sync_delist = sub.add_parser(
+        "sync-delist-dates",
+        help="Fill delist_date for former universe members baostock marks delisted",
+    )
+    sync_delist.add_argument("--universe", default="csi300")
+
+    check_surv = sub.add_parser(
+        "check-survivorship",
+        help="Fail unless a historical snapshot contains a name that delists later",
+    )
+    check_surv.add_argument("--universe", default="csi300")
+    check_surv.add_argument("--as-of", type=_parse_date, required=True)
+    check_surv.add_argument("--until", type=_parse_date, required=True)
+
     extract_news = sub.add_parser(
         "extract-news",
         help="Rule_v1 NewsExtractor on unextracted news → event / event_security",
@@ -2861,6 +2925,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ensure-survivorship":
         return _run_ensure_survivorship(code=args.universe)
+
+    if args.command == "sync-delist-dates":
+        return _run_sync_delist_dates(code=args.universe)
+
+    if args.command == "check-survivorship":
+        return _run_check_survivorship(
+            code=args.universe,
+            as_of=args.as_of,
+            until=args.until,
+        )
 
     if args.command == "extract-news":
         return _run_extract_news(limit=int(args.limit), load=bool(args.load))
