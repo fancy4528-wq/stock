@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -64,6 +64,12 @@ seed-universe: ## 写入 universe_snapshot（需 security 已有标的）
 
 ensure-survivorship: ## 写入退市探针 security + status_history（不进 bootstrap）
 	uv run python -m quantagent.cli ensure-survivorship --universe $(UNIVERSE)
+
+sync-delist-dates: ## 为已离开指数、且行情已停的历史成分补退市日
+	uv run python -m quantagent.cli sync-delist-dates --universe $(L2_UNIVERSE)
+
+check-survivorship: ## Gate 4：历史快照必须含后来退市的股票
+	uv run python -m quantagent.cli check-survivorship --universe $(L2_UNIVERSE) --as-of 2018-01-31 --until $(TODAY)
 
 reporter-validation: ## Reporter 校验失败率汇总（Gate 1 <5%）
 	uv run python scripts/reporter_validation_summary.py --path docs/reporter-validation-log.md
