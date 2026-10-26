@@ -393,12 +393,9 @@ def format_cost_log_section(summary: FunnelReplaySummary, *, generated_on: date)
 
 
 def append_cost_log(path: Path, section: str) -> None:
+    """Append a funnel-replay section. Never truncate later append-only rows."""
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    marker = "## Gate 2b funnel replay"
-    idx = existing.find(marker)
-    if idx >= 0:
-        existing = existing[:idx].rstrip() + "\n"
     if existing and not existing.endswith("\n"):
         existing += "\n"
     path.write_text(existing + section, encoding="utf-8")

@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline backtest-l2-report test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -161,6 +161,9 @@ portfolio:      ## 等权 Top-N + 风控 demo（synthetic，无 DB）
 
 backtest-baseline: ## 跑沪深300 Buy&Hold 基线并写入 docs/baseline-results.md
 	uv run python -m quantagent.cli backtest --strategy buy_and_hold --symbol 000300.SH --start 2015-01-01 --write-baseline docs/baseline-results.md
+
+backtest-l2-report: ## Gate4：L2 Top-N 合成回测 + §9.2 报告（含撮合假设未验证）
+	uv run python -m quantagent.cli backtest --strategy l2_equal_topn --write-report docs/backtest-reports/l2_equal_topn-synthetic.md
 
 backtest:       ## 跑指定策略回测
 	uv run python -m quantagent.cli backtest --strategy $(STRATEGY)
