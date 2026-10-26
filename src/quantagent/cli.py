@@ -1808,6 +1808,70 @@ def _run_portfolio_demo(*, market: str, top_n: int, min_score: float) -> int:
     return 0
 
 
+def _synthetic_l2_topn_panel() -> tuple[list[object], dict[date, dict[str, float]], date, date]:
+    """Small synthetic panel with a limit-up reject for Gate 4 report smoke."""
+    from datetime import timedelta
+
+    from quantagent.execution.broker.simulated import PriceBar
+
+    days: list[date] = []
+    cursor = date(2024, 1, 2)
+    while len(days) < 8:
+        if cursor.weekday() < 5:
+            days.append(cursor)
+        cursor += timedelta(days=1)
+
+    def bar(symbol: str, day: date, px: float, *, limit_up: bool = False) -> PriceBar:
+        return PriceBar(
+            symbol=symbol,
+            trade_date=day,
+            open=px,
+            high=px,
+            low=px,
+            close=px,
+            volume=1_000_000,
+            is_limit_up=limit_up,
+        )
+
+    bars = [
+        bar("AAA", days[0], 10.0),
+        bar("BBB", days[0], 20.0),
+        bar("CCC", days[0], 15.0),
+        bar("AAA", days[1], 10.2),
+        bar("BBB", days[1], 19.8),
+        bar("CCC", days[1], 15.1),
+        bar("AAA", days[2], 11.0, limit_up=True),
+        bar("BBB", days[2], 19.5),
+        bar("CCC", days[2], 15.2),
+        bar("AAA", days[3], 10.8),
+        bar("BBB", days[3], 19.2),
+        bar("CCC", days[3], 15.4),
+        bar("AAA", days[4], 10.5),
+        bar("BBB", days[4], 19.0),
+        bar("CCC", days[4], 15.6),
+        bar("AAA", days[5], 10.6),
+        bar("BBB", days[5], 19.1),
+        bar("CCC", days[5], 15.5),
+        bar("AAA", days[6], 10.7),
+        bar("BBB", days[6], 19.3),
+        bar("CCC", days[6], 15.7),
+        bar("AAA", days[7], 10.9),
+        bar("BBB", days[7], 19.4),
+        bar("CCC", days[7], 15.8),
+    ]
+    scores = {
+        days[0]: {"AAA": 0.9, "BBB": 0.2, "CCC": 0.1},
+        days[1]: {"AAA": 0.95, "BBB": 0.1, "CCC": 0.2},  # next open AAA limit-up → reject
+        days[2]: {"BBB": 0.9, "CCC": 0.8, "AAA": 0.1},
+        days[3]: {"CCC": 0.9, "BBB": 0.5, "AAA": 0.2},
+        days[4]: {"BBB": 0.7, "CCC": 0.6, "AAA": 0.3},
+        days[5]: {"AAA": 0.4, "BBB": 0.5, "CCC": 0.6},
+        days[6]: {"CCC": 0.8, "AAA": 0.5, "BBB": 0.4},
+        days[7]: {"AAA": 0.3, "BBB": 0.3, "CCC": 0.3},
+    }
+    return bars, scores, days[0], days[-1]
+
+
 def _run_backtest(
     *,
     strategy: str,
@@ -1816,6 +1880,8 @@ def _run_backtest(
     start: date,
     end: date,
     write_baseline: Path | None,
+    write_report: Path | None = None,
+    top_n: int = 15,
 ) -> int:
     if strategy == "single_factor":
         from quantagent.backtest.single_factor import (
@@ -1844,6 +1910,41 @@ def _run_backtest(
         )
         note_path.write_text(note_body, encoding="utf-8")
         print(f"wrote {note_path}")
+        return 0
+
+    if strategy in {"l2_equal_topn", "portfolio"}:
+        from quantagent.backtest.portfolio import L2TopNBacktest, L2TopNConfig
+        from quantagent.backtest.report import (
+            BiasCheckInputs,
+            MatchingAssumptionStatus,
+            write_portfolio_backtest_report,
+        )
+
+        bars, scores, syn_start, syn_end = _synthetic_l2_topn_panel()
+        # top_n=1 keeps cash headroom so the planted limit-up reject is visible.
+        cfg = L2TopNConfig(
+            start=syn_start,
+            end=syn_end,
+            top_n=1,
+            strategy="l2_equal_topn",
+        )
+        port = asyncio.run(L2TopNBacktest().run(cfg, bars=bars, scores=scores))  # type: ignore[arg-type]
+        print(
+            f"backtest strategy={port.strategy} window={port.start}..{port.end} "
+            f"top_n={port.top_n} n_days={port.n_days}\n"
+            f"  total_return={port.total_return:.4%} cagr={port.cagr}\n"
+            f"  max_drawdown={port.max_drawdown:.4%} fees={port.total_fees:.2f}\n"
+            f"  n_unfilled={port.n_unfilled} reject_stats={port.reject_stats}\n"
+            f"  matching=unverified (撮合假设未验证)"
+        )
+        out = write_report or Path("docs/backtest-reports/l2_equal_topn-synthetic.md")
+        write_portfolio_backtest_report(
+            port,
+            out,
+            matching=MatchingAssumptionStatus(),
+            bias=BiasCheckInputs(code_version="dev", param_search_count=0),
+        )
+        print(f"wrote {out}")
         return 0
 
     if strategy != "buy_and_hold":
@@ -2127,7 +2228,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     bt = sub.add_parser("backtest", help="Run backtest strategies")
-    bt.add_argument("--strategy", default="buy_and_hold")
+    bt.add_argument(
+        "--strategy",
+        default="buy_and_hold",
+        help="buy_and_hold | single_factor | l2_equal_topn (synthetic Gate 4 report smoke)",
+    )
     bt.add_argument(
         "--factor",
         default="mom_20d",
@@ -2142,6 +2247,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Write markdown summary (e.g. docs/baseline-results.md)",
     )
+    bt.add_argument(
+        "--write-report",
+        type=Path,
+        default=None,
+        help="Write Gate 4 portfolio report (docs/08 §9.2); default for l2_equal_topn",
+    )
+    bt.add_argument("--top-n", type=int, default=15, help="Top-N for l2_equal_topn")
     bt.add_argument("--market", default=None)
 
     feat = sub.add_parser("features", help="List / describe registered factors (P1+P3)")
@@ -2811,6 +2923,8 @@ def main(argv: list[str] | None = None) -> int:
             start=args.start,
             end=args.end,
             write_baseline=args.write_baseline,
+            write_report=getattr(args, "write_report", None),
+            top_n=int(getattr(args, "top_n", 15) or 15),
         )
 
     if args.command == "features":

@@ -100,7 +100,7 @@
 
 ## P4 (2026-10-16 ~ )
 
-**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；撮合假设未校准）
+**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；撮合假设未校准）
 
 **已完成**:
 - `rebalance_equal_weight` 从 shadow 抽出，回测与 shadow 共用 `SimulatedBroker`
@@ -114,8 +114,15 @@
 - 快照日不早于退市日的成员行会删掉并重算等权（招商地产 2015-12-31）
 - 2018-01-31 快照 288 只里，有 13 只在其后退市
 
+**回测报告模板（2026-10-26）**:
+- `backtest/report.py`：按 docs/08 §9.2 写出 1–7 节；第 7 节强制「撮合假设未验证」/未校准
+- `PortfolioBacktestResult` 增加 `reject_stats`、CAGR/Sharpe/Calmar、分年度、成本占比
+- CLI `backtest --strategy l2_equal_topn` / `make backtest-l2-report` → `docs/backtest-reports/`
+- 对照组 / 蒙特卡洛 / 真实 CSI300 长窗报告仍待接
+
 **下一步（Gate 4）**:
-- 组合回测报告写出拒单原因和「撮合假设未验证」
+- 用真实 CSI300 L2 分数跑长窗组合回测并落报告（仍标未校准）
+- 蒙特卡洛随机选股对照
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)

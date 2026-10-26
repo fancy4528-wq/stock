@@ -253,3 +253,37 @@ run_id=`20260930-cn-daily` mode=`llm` overall=PASS
 | 2026-10-15T14:13:11.119155+00:00 | 20261015-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
 | 2026-10-16T10:02:25.320260+00:00 | 20261016-cn-daily | reporter | daily_research | deepseek-flash | llm | 2026 | 1238 | 0.0006 |
 | 2026-10-16T10:02:25.320260+00:00 | 20261016-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+
+| 2026-10-19T10:03:01.350882+00:00 | 20261019-cn-daily | reporter | daily_research | deepseek-flash | llm | 2029 | 1183 | 0.0006 |
+| 2026-10-19T10:03:01.351880+00:00 | 20261019-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-20T10:02:27.896189+00:00 | 20261020-cn-daily | reporter | daily_research | deepseek-flash | llm | 2027 | 1074 | 0.0006 |
+| 2026-10-20T10:02:27.900205+00:00 | 20261020-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-10-21T10:01:31.356244+00:00 | 20261021-cn-daily | reporter | daily_research | deepseek-flash | llm | 2024 | 1022 | 0.0006 |
+| 2026-10-21T10:01:31.359894+00:00 | 20261021-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+
+## Gate 2b funnel replay (2026-10-26)
+
+Window: 2026-10-22 ... 2026-10-26 (3 CN sessions). Holdings: `600519.SH, 000858.SZ, 300750.SZ`. Mode: **heuristic**. Cutoff 18:00 Asia/Shanghai, flash lookback 24h.
+
+| Gate 2b | Actual | Threshold | Result |
+|---|---|---|---|
+| L1 pass rate | 0.00% | < 5% | PASS |
+| L2 → L3 rate | n/a | < 25% | n/a |
+| L3 max / day | 0 | ≤ 10 | PASS |
+| Monitor USD / day | $0.0000 | < $0.30 | PASS |
+| L2 cache hit rate | n/a (heuristic L2 not cached) | > 15% | n/a |
+
+Totals: scanned=47 L1_pass=0 L2_rel=0 L2_deep=0 L3=0 USD=$0.0000 ($0.0000/day).
+
+| as_of | scanned | L1 pass | L1 rate | L2 rel | L2 drop | L2 deep | L3 | ANN hits | cache hit/miss | USD | L2 mode | L3 mode |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---|---|
+| 2026-10-22 | 0 | 0 | n/a | 0 | 0 | 0 | 0 | 0 | 0/0 | $0.0000 | - | - |
+| 2026-10-23 | 0 | 0 | n/a | 0 | 0 | 0 | 0 | 0 | 0/0 | $0.0000 | - | - |
+| 2026-10-26 | 47 | 0 | 0.00% | 0 | 0 | 0 | 0 | 0 | 0/0 | $0.0000 | - | - |
+
+- D-class corpus = news.source in (cls, em); em_announce is C-class and excluded from L1.
+- Fetch window is PIT-closed: published_at in (cutoff-lookback, cutoff]; cls/em flash ingest in this DB starts 2026-09-12.
+- One cycle per session (not 3-minute polling). Heuristic L2 does not write the analysis cache (LLM-only).
+- L1 requires entity match AND keyword severity >= medium; holding-name mentions without keywords do not pass.
+- Sessions=3; days with D-class flash=1.
+- Note: 2026-10-22/23/26 reporter USD rows were truncated by a prior funnel append bug and not reconstructed; see reporter-validation-log.
