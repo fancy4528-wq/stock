@@ -1,1 +1,1 @@
-"""Decision layer: portfolio construction and risk."""
+"""Decision layer: fusion, portfolio construction, and risk."""

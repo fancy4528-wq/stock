@@ -1,4 +1,4 @@
-"""Shadow Portfolio engine: baseline + factor Top-N + agent Top-N via SimulatedBroker."""
+"""Shadow Portfolio engine: baseline + factor + quant + agent + fused (+ norisk)."""
 
 from __future__ import annotations
 
@@ -8,9 +8,23 @@ from pathlib import Path
 from quantagent.core.market import MarketConfig, load_market_config
 from quantagent.core.repository.shadow_day import ShadowDayStore
 from quantagent.evaluation.journal.store import AppendOnlyJournal
+from quantagent.evaluation.shadow.fusion_signals import (
+    apply_risk_filter,
+    fuse_quant_agent_scores,
+    top_n_symbols,
+)
 from quantagent.evaluation.shadow.types import ShadowConfig, ShadowDayRecord, ShadowPortfolioId
 from quantagent.execution.broker.simulated import PriceBar, SimulatedBroker
 from quantagent.execution.rebalance import rebalance_equal_weight
+
+_PORTFOLIO_IDS: tuple[ShadowPortfolioId, ...] = (
+    "shadow_baseline",
+    "shadow_factor",
+    "shadow_quant",
+    "shadow_agent",
+    "shadow_fused",
+    "shadow_fused_norisk",
+)
 
 
 class ShadowPortfolioState:
@@ -38,11 +52,10 @@ class ShadowPortfolioState:
 
 
 class ShadowEngine:
-    """Runs ``shadow_baseline``, ``shadow_factor``, ``shadow_quant``, ``shadow_agent``.
+    """Runs the six Gate-4 shadow portfolios (per-portfolio idempotent).
 
-    Daily records are append-only. Step is **per-portfolio** idempotent for the
-    same ``as_of`` so newly added portfolios (e.g. ``shadow_quant``) can catch up
-    without duplicating existing journal rows.
+    Newly added portfolios (e.g. ``shadow_fused``) can catch up on past
+    ``as_of`` dates without duplicating peers' journal rows.
     """
 
     def __init__(
@@ -60,30 +73,13 @@ class ShadowEngine:
         root.mkdir(parents=True, exist_ok=True)
         self._db_store = ShadowDayStore.try_connect()
         self._states: dict[ShadowPortfolioId, ShadowPortfolioState] = {
-            "shadow_baseline": ShadowPortfolioState(
-                "shadow_baseline",
+            pid: ShadowPortfolioState(
+                pid,
                 cfg=self.cfg,
                 market=self.market,
-                journal=AppendOnlyJournal(root / "shadow_baseline.jsonl"),
-            ),
-            "shadow_factor": ShadowPortfolioState(
-                "shadow_factor",
-                cfg=self.cfg,
-                market=self.market,
-                journal=AppendOnlyJournal(root / "shadow_factor.jsonl"),
-            ),
-            "shadow_quant": ShadowPortfolioState(
-                "shadow_quant",
-                cfg=self.cfg,
-                market=self.market,
-                journal=AppendOnlyJournal(root / "shadow_quant.jsonl"),
-            ),
-            "shadow_agent": ShadowPortfolioState(
-                "shadow_agent",
-                cfg=self.cfg,
-                market=self.market,
-                journal=AppendOnlyJournal(root / "shadow_agent.jsonl"),
-            ),
+                journal=AppendOnlyJournal(root / f"{pid}.jsonl"),
+            )
+            for pid in _PORTFOLIO_IDS
         }
 
     def load_history_metrics(self) -> dict[ShadowPortfolioId, dict[str, float]]:
@@ -137,17 +133,38 @@ class ShadowEngine:
         ranked_agent = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
         agent_syms = [s for s, _ in ranked_agent[: self.cfg.agent_top_n]]
 
+        fused_scores = fuse_quant_agent_scores(quant_scores, agent_scores)
+        fused_raw = top_n_symbols(fused_scores, self.cfg.fused_top_n)
+        fused_st = self._states.get("shadow_fused")
+        fused_nav = fused_st.prev_nav if fused_st is not None else self.cfg.initial_cash
+        fused_risk_syms, fused_risk_notes = apply_risk_filter(
+            fused_raw,
+            bars=bars,
+            as_of=as_of,
+            total_value=fused_nav if fused_nav > 0 else self.cfg.initial_cash,
+            cash=max(fused_nav * 0.10, 0.0),
+        )
+
         targets: dict[ShadowPortfolioId, list[str]] = {
             "shadow_baseline": baseline_symbols[: self.cfg.baseline_n],
             "shadow_factor": factor_syms,
             "shadow_quant": quant_syms,
             "shadow_agent": agent_syms,
+            "shadow_fused": fused_risk_syms,
+            "shadow_fused_norisk": fused_raw,
         }
         extra_notes: dict[ShadowPortfolioId, list[str]] = {
             "shadow_baseline": [],
             "shadow_factor": [],
             "shadow_quant": (["no_quant_scores"] if not quant_syms else []),
             "shadow_agent": (["no_agent_scores"] if not agent_syms else []),
+            "shadow_fused": (
+                (["no_fused_scores"] if not fused_raw else [])
+                + fused_risk_notes
+            ),
+            "shadow_fused_norisk": (
+                ["no_fused_scores"] if not fused_raw else ["risk_skipped"]
+            ),
         }
 
         records: list[ShadowDayRecord] = []

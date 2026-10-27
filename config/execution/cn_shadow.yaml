@@ -1,10 +1,11 @@
-# CN shadow execution defaults (P1 + Gate 3 shadow_quant)
+# CN shadow execution defaults (P1 + Gate 3/4 shadows)
 
 initial_cash: 1000000
 baseline_n: 50
 factor_top_n: 15
 quant_top_n: 15
 agent_top_n: 15
+fused_top_n: 15
 factor_name: mom_20d
 strategy_version: gate3-l2-equal-v1
 rebalance: daily
