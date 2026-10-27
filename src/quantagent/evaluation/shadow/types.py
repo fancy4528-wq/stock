@@ -12,6 +12,8 @@ ShadowPortfolioId = Literal[
     "shadow_factor",
     "shadow_quant",
     "shadow_agent",
+    "shadow_fused",
+    "shadow_fused_norisk",
 ]
 
 
@@ -41,6 +43,7 @@ class ShadowConfig(BaseModel):
     factor_top_n: int = 15
     quant_top_n: int = 15
     agent_top_n: int = 15
+    fused_top_n: int = 15
     factor_name: str = "mom_20d"
     strategy_version: str = "gate3-l2-equal-v1"
     rebalance: Literal["daily"] = "daily"

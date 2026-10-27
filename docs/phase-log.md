@@ -100,7 +100,7 @@
 
 ## P4 (2026-10-16 ~ )
 
-**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；真实 CSI300 5y 报告已出；撮合假设未校准）
+**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；真实 CSI300 5y 报告已出；`shadow_fused` / `shadow_fused_norisk` 已接入；撮合假设未校准）
 
 **已完成**:
 - `rebalance_equal_weight` 从 shadow 抽出，回测与 shadow 共用 `SimulatedBroker`
@@ -127,8 +127,15 @@
 - §6 对照（同周频撮合）：BH −13.0%｜等权池(n=50) −18.1%｜最强单因子 `max_ret_20d` −29.8%｜随机 Top-15 95 分位 −53.1% → 本策略 **超出随机范围**（`backtest/controls.py` / `--with-controls`）
 - 第 7 节仍标未校准
 
+**Shadow fused（2026-10-27）**:
+- `decision/fusion`：等权 SignalFusion（rank 归一化 + 缺失信号 renormalize）
+- `shadow_fused`：quant+agent → Fusion Top-N → `RiskEngine` 过滤后再等权调仓
+- `shadow_fused_norisk`：同一套 Fusion Top-N，跳过风控（notes 含 `risk_skipped`）
+- 按组合幂等追赶；流动性用当日 `amount` 作 `avg_amount_20d` 代理
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
+- Agent IC / Confidence 校准
 - 可选：月频再平衡 / 降低费用敏感度；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)

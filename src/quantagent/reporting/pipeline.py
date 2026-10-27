@@ -52,7 +52,10 @@ def build_synthetic_bars(symbols: list[str], as_of: date, *, seed: int = 7) -> l
         close = px * (1.0 + ret)
         high = max(open_px, close) * 1.01
         low = min(open_px, close) * 0.99
-        vol = 1_000_000.0 + i * 10_000
+        # Keep day amount above CN risk liquidity floor (50M) so shadow_fused
+        # is not wiped in synthetic runs; limit-up still exercises risk A/B.
+        vol = 5_000_000.0 + i * 10_000
+        amount = max(vol * close, 60_000_000.0)
         bars.append(
             PriceBar(
                 symbol=sym,
@@ -62,7 +65,7 @@ def build_synthetic_bars(symbols: list[str], as_of: date, *, seed: int = 7) -> l
                 low=low,
                 close=close,
                 volume=vol,
-                amount=vol * close,
+                amount=amount,
                 is_limit_up=(i == 3),  # one limit-up name for unfilled demo
             )
         )
@@ -268,7 +271,9 @@ async def run_daily_pipeline(
 
     Live path soft-runs L2 equal-weight scores for ``shadow_quant`` and the
     research DAG (heuristic, ``use_llm=False``) for ``shadow_agent`` Top-N;
-    failures become degraded notes, not hard stops.
+    ``shadow_fused`` / ``shadow_fused_norisk`` fuse quant+agent inside
+    ``ShadowEngine`` (norisk skips RiskEngine). Failures become degraded
+    notes, not hard stops.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -292,7 +297,11 @@ async def run_daily_pipeline(
         engine = ShadowEngine(
             shadow_dir,
             cfg=ShadowConfig(
-                baseline_n=50, factor_top_n=15, quant_top_n=15, agent_top_n=15
+                baseline_n=50,
+                factor_top_n=15,
+                quant_top_n=15,
+                agent_top_n=15,
+                fused_top_n=15,
             ),
             code_version="dev",
         )
@@ -360,6 +369,9 @@ async def run_daily_pipeline(
                 factor_top_n=min(15, max(n_scored, 1)),
                 quant_top_n=min(15, max(n_quant, 1)) if n_quant else 15,
                 agent_top_n=min(15, max(n_agent, 1)) if n_agent else 15,
+                fused_top_n=min(
+                    15, max(max(n_quant, n_agent), 1)
+                ),
             ),
             code_version="dev",
         )

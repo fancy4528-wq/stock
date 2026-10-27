@@ -49,6 +49,7 @@ async def test_shadow_step_records_and_unfilled(tmp_path: Path) -> None:
             factor_top_n=5,
             quant_top_n=5,
             agent_top_n=5,
+            fused_top_n=5,
             initial_cash=1_000_000.0,
         ),
     )
@@ -61,22 +62,34 @@ async def test_shadow_step_records_and_unfilled(tmp_path: Path) -> None:
         quant_scores=quant_scores,
         agent_scores=agent_scores,
     )
-    assert len(recs) == 4
+    assert len(recs) == 6
     ids = {r.portfolio for r in recs}
     assert ids == {
         "shadow_baseline",
         "shadow_factor",
         "shadow_quant",
         "shadow_agent",
+        "shadow_fused",
+        "shadow_fused_norisk",
     }
     factor = next(r for r in recs if r.portfolio == "shadow_factor")
     quant = next(r for r in recs if r.portfolio == "shadow_quant")
     agent = next(r for r in recs if r.portfolio == "shadow_agent")
+    fused = next(r for r in recs if r.portfolio == "shadow_fused")
+    fused_nr = next(r for r in recs if r.portfolio == "shadow_fused_norisk")
     assert factor.n_positions > 0
     assert quant.n_positions > 0
     assert agent.n_positions > 0
+    assert fused.n_positions > 0
+    assert fused_nr.n_positions > 0
     assert set(factor.weights) != set(agent.weights)
     assert set(quant.weights) != set(factor.weights)
+    assert "risk_skipped" in fused_nr.notes
+    assert any(n.startswith("risk:") for n in fused.notes)
+    # Limit-up name filtered by RiskEngine on fused, kept on norisk target
+    limit_up_sym = symbols[3]
+    if limit_up_sym in fused_nr.weights:
+        assert limit_up_sym not in fused.weights
     # Symbol index 3 is limit-up in synthetic bars — buy should leave unfilled
     all_unfilled = [u for r in recs for u in r.unfilled]
     assert any(u.get("reason") == "limit_up_cannot_buy" for u in all_unfilled)
@@ -99,9 +112,11 @@ async def test_shadow_step_records_and_unfilled(tmp_path: Path) -> None:
     assert len(agent_lines.splitlines()) == 2
     quant_lines = (tmp_path / "shadow_quant.jsonl").read_text(encoding="utf-8").strip()
     assert len(quant_lines.splitlines()) == 2
+    fused_lines = (tmp_path / "shadow_fused.jsonl").read_text(encoding="utf-8").strip()
+    assert len(fused_lines.splitlines()) == 2
 
     status = engine.latest_status()
-    assert len(status) == 4
+    assert len(status) == 6
     assert all("ret_cum" in row for row in status)
 
 
@@ -118,6 +133,7 @@ async def test_shadow_step_idempotent_same_as_of(tmp_path: Path) -> None:
             factor_top_n=3,
             quant_top_n=3,
             agent_top_n=3,
+            fused_top_n=3,
             initial_cash=1_000_000.0,
         ),
     )
@@ -139,7 +155,7 @@ async def test_shadow_step_idempotent_same_as_of(tmp_path: Path) -> None:
         quant_scores=scores,
         agent_scores=scores,
     )
-    assert len(second) == 4
+    assert len(second) == 6
     assert all("idempotent_skip" in r.notes for r in second)
     baseline_lines = (tmp_path / "shadow_baseline.jsonl").read_text(encoding="utf-8").strip()
     assert len(baseline_lines.splitlines()) == 1
@@ -153,11 +169,11 @@ async def test_shadow_quant_catchup_without_duplicating_peers(tmp_path: Path) ->
     symbols = synthetic_universe(10)
     bars = build_synthetic_bars(symbols, as_of)
     scores = {s: 1.0 - i * 0.01 for i, s in enumerate(symbols)}
-
-    legacy = ShadowEngine(
-        tmp_path,
-        cfg=ShadowConfig(baseline_n=10, factor_top_n=3, quant_top_n=3, agent_top_n=3),
+    cfg = ShadowConfig(
+        baseline_n=10, factor_top_n=3, quant_top_n=3, agent_top_n=3, fused_top_n=3
     )
+
+    legacy = ShadowEngine(tmp_path, cfg=cfg)
     quant_state = legacy._states.pop("shadow_quant")
     await legacy.step(
         as_of=as_of,
@@ -173,10 +189,7 @@ async def test_shadow_quant_catchup_without_duplicating_peers(tmp_path: Path) ->
     if quant_path.exists():
         quant_path.unlink()
 
-    engine2 = ShadowEngine(
-        tmp_path,
-        cfg=ShadowConfig(baseline_n=10, factor_top_n=3, quant_top_n=3, agent_top_n=3),
-    )
+    engine2 = ShadowEngine(tmp_path, cfg=cfg)
     engine2.load_history_metrics()
     recs = await engine2.step(
         as_of=as_of,
@@ -200,13 +213,65 @@ async def test_shadow_quant_catchup_without_duplicating_peers(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_shadow_fused_catchup_without_duplicating_peers(tmp_path: Path) -> None:
+    """New fused portfolios catch up without rewriting older peers."""
+    as_of = date(2026, 9, 1)
+    symbols = synthetic_universe(10)
+    bars = build_synthetic_bars(symbols, as_of)
+    scores = {s: 1.0 - i * 0.01 for i, s in enumerate(symbols)}
+    cfg = ShadowConfig(
+        baseline_n=10, factor_top_n=3, quant_top_n=3, agent_top_n=3, fused_top_n=3
+    )
+
+    legacy = ShadowEngine(tmp_path, cfg=cfg)
+    for pid in ("shadow_fused", "shadow_fused_norisk"):
+        legacy._states.pop(pid)
+    await legacy.step(
+        as_of=as_of,
+        run_id="20260901-cn-daily",
+        bars=bars,
+        baseline_symbols=symbols,
+        factor_scores=scores,
+        quant_scores=scores,
+        agent_scores=scores,
+    )
+    for pid in ("shadow_fused", "shadow_fused_norisk"):
+        path = tmp_path / f"{pid}.jsonl"
+        if path.exists():
+            path.unlink()
+
+    engine2 = ShadowEngine(tmp_path, cfg=cfg)
+    engine2.load_history_metrics()
+    recs = await engine2.step(
+        as_of=as_of,
+        run_id="20260901-cn-daily",
+        bars=bars,
+        baseline_symbols=symbols,
+        factor_scores=scores,
+        quant_scores=scores,
+        agent_scores=scores,
+    )
+    by_pid = {r.portfolio: r for r in recs}
+    assert "idempotent_skip" in by_pid["shadow_baseline"].notes
+    assert "idempotent_skip" in by_pid["shadow_quant"].notes
+    assert "idempotent_skip" not in by_pid["shadow_fused"].notes
+    assert "idempotent_skip" not in by_pid["shadow_fused_norisk"].notes
+    assert by_pid["shadow_fused"].n_positions > 0
+    assert by_pid["shadow_fused_norisk"].n_positions > 0
+    baseline_lines = (tmp_path / "shadow_baseline.jsonl").read_text(encoding="utf-8").strip()
+    assert len(baseline_lines.splitlines()) == 1
+
+
+@pytest.mark.asyncio
 async def test_shadow_agent_empty_scores_notes(tmp_path: Path) -> None:
     as_of = date(2026, 9, 1)
     symbols = synthetic_universe(8)
     bars = build_synthetic_bars(symbols, as_of)
     engine = ShadowEngine(
         tmp_path,
-        cfg=ShadowConfig(baseline_n=8, factor_top_n=3, quant_top_n=3, agent_top_n=3),
+        cfg=ShadowConfig(
+            baseline_n=8, factor_top_n=3, quant_top_n=3, agent_top_n=3, fused_top_n=3
+        ),
     )
     recs = await engine.step(
         as_of=as_of,
@@ -219,10 +284,16 @@ async def test_shadow_agent_empty_scores_notes(tmp_path: Path) -> None:
     )
     agent = next(r for r in recs if r.portfolio == "shadow_agent")
     quant = next(r for r in recs if r.portfolio == "shadow_quant")
+    fused = next(r for r in recs if r.portfolio == "shadow_fused")
+    fused_nr = next(r for r in recs if r.portfolio == "shadow_fused_norisk")
     assert "no_agent_scores" in agent.notes
     assert agent.n_positions == 0
     assert "no_quant_scores" in quant.notes
     assert quant.n_positions == 0
+    assert "no_fused_scores" in fused.notes
+    assert "no_fused_scores" in fused_nr.notes
+    assert fused.n_positions == 0
+    assert fused_nr.n_positions == 0
 
 
 @pytest.mark.asyncio
