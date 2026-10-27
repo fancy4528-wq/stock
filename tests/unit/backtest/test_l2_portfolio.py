@@ -61,7 +61,13 @@ async def test_future_bars_do_not_change_history() -> None:
         days[6]: {"AAA": 99.0, "BBB": -99.0, "CCC": 0.0},
         days[7]: {"AAA": 99.0},
     }
-    cfg = L2TopNConfig(start=window[0], end=window[-1], top_n=1, initial_cash=1_000_000)
+    cfg = L2TopNConfig(
+        start=window[0],
+        end=window[-1],
+        top_n=1,
+        initial_cash=1_000_000,
+        rebalance="daily",
+    )
     engine = L2TopNBacktest()
     baseline = await engine.run(cfg, bars=_panel(window, {k: v[:6] for k, v in prices.items()}), scores=scores)
     polluted = await engine.run(cfg, bars=_panel(days, prices), scores=scores)
@@ -90,13 +96,46 @@ async def test_limit_up_buy_is_rejected() -> None:
     ]
     scores = {days[0]: {"AAA": 1.0, "BBB": 0.0}, days[1]: {"BBB": 1.0}, days[2]: {}}
     result = await L2TopNBacktest().run(
-        L2TopNConfig(start=days[0], end=days[-1], top_n=1),
+        L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="daily"),
         bars=bars,
         scores=scores,
     )
     assert result.n_unfilled >= 1
     assert "AAA" not in result.positions
-    assert result.notes[1] == "matching assumptions unverified"
+    assert "matching assumptions unverified" in result.notes
+    assert result.rebalance == "daily"
+
+
+@pytest.mark.asyncio
+async def test_weekly_rebalance_trades_only_on_week_boundary() -> None:
+    """Signal Fri close → fill Mon open; mid-week score flips must not trade."""
+    # 2024-01-02 Tue … cover two week boundaries.
+    days = _days(10, start=date(2024, 1, 2))
+    bars = _panel(
+        days,
+        {
+            "AAA": [10.0] * 10,
+            "BBB": [10.0] * 10,
+        },
+    )
+    # Prefer AAA all week 1; flip hard to BBB mid-week-2 before next signal.
+    scores = {d: {"AAA": 1.0, "BBB": 0.0} for d in days}
+    # Wed of week 2 (days[6] if Tue start: Tue0 Wed1 Thu2 Fri3 | Mon4 Tue5 Wed6 ...)
+    scores[days[6]] = {"AAA": 0.0, "BBB": 1.0}
+    scores[days[7]] = {"AAA": 0.0, "BBB": 1.0}
+    scores[days[8]] = {"AAA": 0.0, "BBB": 1.0}
+    scores[days[9]] = {"AAA": 0.0, "BBB": 1.0}
+
+    result = await L2TopNBacktest().run(
+        L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="weekly"),
+        bars=bars,
+        scores=scores,
+    )
+    assert result.rebalance == "weekly"
+    # Week1 Fri signal → week2 Mon fill (AAA). Week2 Fri signal → week3 Mon fill (BBB).
+    assert result.n_rebalances == 2
+    assert "BBB" in result.positions
+    assert "AAA" not in result.positions
 
 
 @pytest.mark.asyncio
@@ -108,13 +147,13 @@ async def test_holdout_end_is_refused_without_consuming_the_use(tmp_path) -> Non
     engine = L2TopNBacktest(guard=guard)
     with pytest.raises(HoldoutViolation, match="check_access"):
         await engine.run(
-            L2TopNConfig(start=days[0], end=days[-1], top_n=1),
+            L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="daily"),
             bars=bars,
             scores=scores,
         )
     assert guard.uses() == []
     allowed = await engine.run(
-        L2TopNConfig(start=days[0], end=days[-2], top_n=1),
+        L2TopNConfig(start=days[0], end=days[-2], top_n=1, rebalance="daily"),
         bars=bars,
         scores=scores,
     )

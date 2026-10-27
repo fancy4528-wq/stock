@@ -1882,6 +1882,12 @@ def _run_backtest(
     write_baseline: Path | None,
     write_report: Path | None = None,
     top_n: int = 15,
+    from_db: bool = False,
+    universe: str = "csi300",
+    filter_membership: bool = True,
+    rebalance: str = "weekly",
+    with_controls: bool = False,
+    mc_trials: int = 100,
 ) -> int:
     if strategy == "single_factor":
         from quantagent.backtest.single_factor import (
@@ -1920,29 +1926,106 @@ def _run_backtest(
             write_portfolio_backtest_report,
         )
 
-        bars, scores, syn_start, syn_end = _synthetic_l2_topn_panel()
-        # top_n=1 keeps cash headroom so the planted limit-up reject is visible.
-        cfg = L2TopNConfig(
-            start=syn_start,
-            end=syn_end,
-            top_n=1,
-            strategy="l2_equal_topn",
-        )
-        port = asyncio.run(L2TopNBacktest().run(cfg, bars=bars, scores=scores))  # type: ignore[arg-type]
+        if from_db:
+            from quantagent.backtest.l2_panel import (
+                CSI300_L2_BACKTEST_END,
+                CSI300_L2_BACKTEST_START,
+                build_real_l2_topn_panel,
+            )
+            from quantagent.quant.training.holdout_guard import load_holdout_guard
+
+            win_start = start if start != date(2015, 1, 1) else CSI300_L2_BACKTEST_START
+            # argparse default end is today; clamp to sealed holdout − 1 day.
+            win_end = end
+            if win_end > CSI300_L2_BACKTEST_END:
+                win_end = CSI300_L2_BACKTEST_END
+            panel = build_real_l2_topn_panel(
+                universe=universe,
+                start=win_start,
+                end=win_end,
+                filter_membership=filter_membership,
+            )
+            freq = rebalance if rebalance in {"daily", "weekly", "monthly"} else "weekly"
+            cfg = L2TopNConfig(
+                start=win_start,
+                end=win_end,
+                top_n=top_n,
+                strategy="l2_equal_topn",
+                rebalance=freq,  # type: ignore[arg-type]
+            )
+            guard = load_holdout_guard("CN")
+
+            async def _run_l2_and_controls() -> tuple[object, dict[str, str] | None]:
+                port_inner = await L2TopNBacktest(guard=guard).run(
+                    cfg, bars=panel.bars, scores=panel.scores
+                )
+                port_inner = port_inner.model_copy(
+                    update={"notes": [*port_inner.notes, *panel.notes]}
+                )
+                ctrl_map: dict[str, str] | None = None
+                if with_controls:
+                    from quantagent.backtest.controls import run_control_suite
+
+                    suite = await run_control_suite(
+                        panel,
+                        strategy_return=float(port_inner.total_return),
+                        top_n=top_n,
+                        rebalance=freq,  # type: ignore[arg-type]
+                        mc_trials=mc_trials,
+                        guard=guard,
+                    )
+                    port_inner = port_inner.model_copy(
+                        update={"notes": [*port_inner.notes, *suite.notes]}
+                    )
+                    ctrl_map = suite.as_report_controls()
+                    print(
+                        "controls: "
+                        f"BH={suite.buy_and_hold:+.2%} "
+                        f"pool={suite.equal_weight_pool:+.2%} "
+                        f"single={suite.best_single_factor:+.2%} "
+                        f"p95={suite.random_p95:+.2%} "
+                        f"beats_p95={suite.beats_random_p95}",
+                        flush=True,
+                    )
+                return port_inner, ctrl_map
+
+            port, control_map = asyncio.run(_run_l2_and_controls())
+            out = write_report or Path(
+                f"docs/backtest-reports/l2_equal_topn-{universe}-5y.md"
+            )
+        else:
+            bars, scores, syn_start, syn_end = _synthetic_l2_topn_panel()
+            # top_n=1 + daily keeps cash headroom so planted limit-up reject is visible.
+            cfg = L2TopNConfig(
+                start=syn_start,
+                end=syn_end,
+                top_n=1,
+                strategy="l2_equal_topn",
+                rebalance="daily",
+            )
+            port = asyncio.run(
+                L2TopNBacktest().run(cfg, bars=bars, scores=scores)  # type: ignore[arg-type]
+            )
+            control_map = None
+            out = write_report or Path(
+                "docs/backtest-reports/l2_equal_topn-synthetic.md"
+            )
+
         print(
             f"backtest strategy={port.strategy} window={port.start}..{port.end} "
-            f"top_n={port.top_n} n_days={port.n_days}\n"
+            f"top_n={port.top_n} rebalance={port.rebalance} "
+            f"n_rebalances={port.n_rebalances} n_days={port.n_days}\n"
             f"  total_return={port.total_return:.4%} cagr={port.cagr}\n"
             f"  max_drawdown={port.max_drawdown:.4%} fees={port.total_fees:.2f}\n"
             f"  n_unfilled={port.n_unfilled} reject_stats={port.reject_stats}\n"
             f"  matching=unverified (撮合假设未验证)"
         )
-        out = write_report or Path("docs/backtest-reports/l2_equal_topn-synthetic.md")
         write_portfolio_backtest_report(
             port,
             out,
             matching=MatchingAssumptionStatus(),
             bias=BiasCheckInputs(code_version="dev", param_search_count=0),
+            controls=control_map,
         )
         print(f"wrote {out}")
         return 0
@@ -2231,7 +2314,7 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument(
         "--strategy",
         default="buy_and_hold",
-        help="buy_and_hold | single_factor | l2_equal_topn (synthetic Gate 4 report smoke)",
+        help="buy_and_hold | single_factor | l2_equal_topn",
     )
     bt.add_argument(
         "--factor",
@@ -2254,6 +2337,38 @@ def main(argv: list[str] | None = None) -> int:
         help="Write Gate 4 portfolio report (docs/08 §9.2); default for l2_equal_topn",
     )
     bt.add_argument("--top-n", type=int, default=15, help="Top-N for l2_equal_topn")
+    bt.add_argument(
+        "--rebalance",
+        default="weekly",
+        choices=["daily", "weekly", "monthly"],
+        help="l2_equal_topn cadence (default weekly per docs/08 §2.5)",
+    )
+    bt.add_argument(
+        "--from-db",
+        action="store_true",
+        help="l2_equal_topn: real CSI300 L2 panel (frozen IC signs); else synthetic smoke",
+    )
+    bt.add_argument(
+        "--universe",
+        default="csi300",
+        help="Universe for --from-db l2_equal_topn (default csi300)",
+    )
+    bt.add_argument(
+        "--no-membership-filter",
+        action="store_true",
+        help="l2_equal_topn --from-db: score historical union without daily membership filter",
+    )
+    bt.add_argument(
+        "--with-controls",
+        action="store_true",
+        help="l2_equal_topn --from-db: run §6 controls (BH/pool/single/MC)",
+    )
+    bt.add_argument(
+        "--mc-trials",
+        type=int,
+        default=100,
+        help="Monte Carlo random Top-N trials for --with-controls (default 100)",
+    )
     bt.add_argument("--market", default=None)
 
     feat = sub.add_parser("features", help="List / describe registered factors (P1+P3)")
@@ -2925,6 +3040,12 @@ def main(argv: list[str] | None = None) -> int:
             write_baseline=args.write_baseline,
             write_report=getattr(args, "write_report", None),
             top_n=int(getattr(args, "top_n", 15) or 15),
+            from_db=bool(getattr(args, "from_db", False)),
+            universe=str(getattr(args, "universe", "csi300") or "csi300"),
+            filter_membership=not bool(getattr(args, "no_membership_filter", False)),
+            rebalance=str(getattr(args, "rebalance", "weekly") or "weekly"),
+            with_controls=bool(getattr(args, "with_controls", False)),
+            mc_trials=int(getattr(args, "mc_trials", 100) or 100),
         )
 
     if args.command == "features":

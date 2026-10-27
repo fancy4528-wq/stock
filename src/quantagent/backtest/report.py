@@ -135,7 +135,8 @@ def render_portfolio_backtest_report(
 
     meta_line = (
         f"> period {result.start.isoformat()} → {result.end.isoformat()} "
-        f"| top_n={result.top_n} | code_version=`{bias.code_version}` "
+        f"| top_n={result.top_n} | rebalance={result.rebalance} "
+        f"(n={result.n_rebalances}) | code_version=`{bias.code_version}` "
         f"| param_search_count={bias.param_search_count}"
     )
     cost_line = (

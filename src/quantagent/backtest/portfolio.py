@@ -2,6 +2,7 @@
 
 Signal at the close of day T. Orders go out on the next session and fill at
 that session's open, through the same ``rebalance_equal_weight`` shadow uses.
+Default cadence is weekly (docs/08 §2.5); daily is available for smoke tests.
 Bars and scores after ``end`` are ignored.
 """
 
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from math import sqrt
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +20,8 @@ from quantagent.execution.rebalance import rebalance_equal_weight
 from quantagent.quant.training.holdout_guard import HoldoutGuard
 from quantagent.shared.errors import QuantAgentError
 
+RebalanceFreq = Literal["daily", "weekly", "monthly"]
+
 
 class L2TopNConfig(BaseModel):
     start: date
@@ -26,6 +30,8 @@ class L2TopNConfig(BaseModel):
     initial_cash: float = 1_000_000.0
     strategy: str = "l2_equal_topn"
     risk_free: float = 0.02
+    # docs/08 §2.5: weekly (Mon open) or monthly; daily turnover is too high.
+    rebalance: RebalanceFreq = "weekly"
 
 
 class PortfolioBacktestResult(BaseModel):
@@ -51,6 +57,8 @@ class PortfolioBacktestResult(BaseModel):
     calmar: float | None = None
     yearly_returns: dict[int, float] = Field(default_factory=dict)
     cost_to_pnl: float | None = None
+    rebalance: RebalanceFreq = "weekly"
+    n_rebalances: int = 0
 
 
 class L2TopNBacktest:
@@ -69,8 +77,9 @@ class L2TopNBacktest:
         self,
         cfg: L2TopNConfig,
         *,
-        bars: list[PriceBar],
+        bars: list[PriceBar] | None = None,
         scores: dict[date, dict[str, float]],
+        bars_by_date: dict[date, list[PriceBar]] | None = None,
     ) -> PortfolioBacktestResult:
         if cfg.end < cfg.start:
             raise QuantAgentError("backtest end is before start")
@@ -79,11 +88,20 @@ class L2TopNBacktest:
         if self.guard is not None:
             self.guard.assert_excluded(cfg.end)
 
-        by_date: dict[date, list[PriceBar]] = {}
-        for bar in bars:
-            if bar.trade_date < cfg.start or bar.trade_date > cfg.end:
-                continue
-            by_date.setdefault(bar.trade_date, []).append(bar)
+        if bars_by_date is not None:
+            by_date = {
+                d: rows
+                for d, rows in bars_by_date.items()
+                if cfg.start <= d <= cfg.end
+            }
+        else:
+            if bars is None:
+                raise QuantAgentError("bars or bars_by_date is required")
+            by_date = {}
+            for bar in bars:
+                if bar.trade_date < cfg.start or bar.trade_date > cfg.end:
+                    continue
+                by_date.setdefault(bar.trade_date, []).append(bar)
         sessions = sorted(by_date)
         if len(sessions) < 2:
             raise QuantAgentError(
@@ -94,10 +112,12 @@ class L2TopNBacktest:
         equity: list[float] = []
         total_fees = 0.0
         pending: list[str] | None = None
-        for session in sessions:
+        n_rebalances = 0
+        for i, session in enumerate(sessions):
             broker.set_bars(by_date[session], trade_date=session)
             broker.roll_day()
-            if pending:
+            prev = sessions[i - 1] if i > 0 else None
+            if pending and _is_fill_session(session, prev, cfg.rebalance):
                 acks = await rebalance_equal_weight(
                     broker,
                     self.market,
@@ -106,8 +126,14 @@ class L2TopNBacktest:
                     run_id=cfg.strategy,
                 )
                 total_fees += sum(ack.fees for ack in acks)
+                n_rebalances += 1
+                pending = None
             equity.append(broker.mark_to_market())
-            pending = _top_n(scores.get(session, {}), cfg.top_n)
+            nxt = sessions[i + 1] if i + 1 < len(sessions) else None
+            if _is_signal_session(session, nxt, cfg.rebalance):
+                picks = _top_n(scores.get(session, {}), cfg.top_n)
+                if picks:
+                    pending = picks
 
         end_nav = equity[-1]
         positions = {p.symbol: p.quantity for p in await broker.get_positions()}
@@ -132,6 +158,7 @@ class L2TopNBacktest:
             positions=positions,
             notes=[
                 "signal at close, fill at next open",
+                f"rebalance={cfg.rebalance} (n={n_rebalances})",
                 "matching assumptions unverified",
             ],
             reject_stats=reject_stats,
@@ -143,7 +170,38 @@ class L2TopNBacktest:
             calmar=calmar,
             yearly_returns=_yearly_returns(sessions, equity),
             cost_to_pnl=cost_to_pnl,
+            rebalance=cfg.rebalance,
+            n_rebalances=n_rebalances,
         )
+
+
+def _period_key(day: date, freq: RebalanceFreq) -> tuple[int, int]:
+    if freq == "monthly":
+        return day.year, day.month
+    iso = day.isocalendar()
+    return int(iso[0]), int(iso[1])
+
+
+def _is_fill_session(
+    session: date, prev: date | None, freq: RebalanceFreq
+) -> bool:
+    """True on the first session of a new period (or every day if daily)."""
+    if freq == "daily":
+        return True
+    if prev is None:
+        return False
+    return _period_key(session, freq) != _period_key(prev, freq)
+
+
+def _is_signal_session(
+    session: date, nxt: date | None, freq: RebalanceFreq
+) -> bool:
+    """True on the last session of a period (or every day if daily)."""
+    if freq == "daily":
+        return True
+    if nxt is None:
+        return True
+    return _period_key(session, freq) != _period_key(nxt, freq)
 
 
 def _reject_stats(unfilled: list[UnfilledRecord]) -> dict[str, int]:
