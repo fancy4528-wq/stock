@@ -287,3 +287,5 @@ Totals: scanned=47 L1_pass=0 L2_rel=0 L2_deep=0 L3=0 USD=$0.0000 ($0.0000/day).
 - L1 requires entity match AND keyword severity >= medium; holding-name mentions without keywords do not pass.
 - Sessions=3; days with D-class flash=1.
 - Note: 2026-10-22/23/26 reporter USD rows were truncated by a prior funnel append bug and not reconstructed; see reporter-validation-log.
+| 2026-10-27T10:03:09.243405+00:00 | 20261027-cn-daily | reporter | daily_research | deepseek-flash | llm | 2020 | 1093 | 0.0006 |
+| 2026-10-27T10:03:09.244400+00:00 | 20261027-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |

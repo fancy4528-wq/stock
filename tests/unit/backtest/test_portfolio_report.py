@@ -52,7 +52,7 @@ async def test_report_requires_matching_disclaimer_and_reject_stats() -> None:
     ]
     scores = {days[0]: {"AAA": 1.0, "BBB": 0.0}, days[1]: {"BBB": 1.0}, days[2]: {}}
     result = await L2TopNBacktest().run(
-        L2TopNConfig(start=days[0], end=days[-1], top_n=1),
+        L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="daily"),
         bars=bars,
         scores=scores,
     )

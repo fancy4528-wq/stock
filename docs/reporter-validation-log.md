@@ -51,3 +51,5 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-10-26T12:47:18.316872+00:00 | 20261023-cn-daily | 2026-10-23 | reporter | deterministic | true |  |  |
 | 2026-10-26T12:47:28.777152+00:00 | 20261026-cn-daily | 2026-10-26 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
 | 2026-10-26T12:47:28.777152+00:00 | 20261026-cn-daily | 2026-10-26 | reporter | deterministic | true |  |  |
+| 2026-10-27T10:03:09.244400+00:00 | 20261027-cn-daily | 2026-10-27 | reporter | llm | false | SchemaValidationError | 8 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-27T10:03:09.244400+00:00 | 20261027-cn-daily | 2026-10-27 | reporter | deterministic | true |  |  |

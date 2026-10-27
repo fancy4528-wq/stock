@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline backtest-l2-report test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline backtest-l2-report backtest-l2-csi300 test-sentinel test-edge report report-live schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -164,6 +164,14 @@ backtest-baseline: ## 跑沪深300 Buy&Hold 基线并写入 docs/baseline-result
 
 backtest-l2-report: ## Gate4：L2 Top-N 合成回测 + §9.2 报告（含撮合假设未验证）
 	uv run python -m quantagent.cli backtest --strategy l2_equal_topn --write-report docs/backtest-reports/l2_equal_topn-synthetic.md
+
+# Holdout sealed at 2026-10-14 — keep END ≤ 2026-10-13.
+L2_BT_END ?= 2026-10-13
+L2_BT_TOP_N ?= 15
+L2_BT_REBALANCE ?= weekly
+L2_BT_MC_TRIALS ?= 100
+backtest-l2-csi300: ## Gate4：真实 CSI300 L2 Top-N 长窗回测 + §6 对照 + §9.2 报告（周频；未校准）
+	uv run python -m quantagent.cli backtest --strategy l2_equal_topn --from-db --universe csi300 --start $(START) --end $(L2_BT_END) --top-n $(L2_BT_TOP_N) --rebalance $(L2_BT_REBALANCE) --with-controls --mc-trials $(L2_BT_MC_TRIALS) --write-report docs/backtest-reports/l2_equal_topn-csi300-5y.md
 
 backtest:       ## 跑指定策略回测
 	uv run python -m quantagent.cli backtest --strategy $(STRATEGY)

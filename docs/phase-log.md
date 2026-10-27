@@ -100,7 +100,7 @@
 
 ## P4 (2026-10-16 ~ )
 
-**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；撮合假设未校准）
+**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；真实 CSI300 5y 报告已出；撮合假设未校准）
 
 **已完成**:
 - `rebalance_equal_weight` 从 shadow 抽出，回测与 shadow 共用 `SimulatedBroker`
@@ -118,12 +118,18 @@
 - `backtest/report.py`：按 docs/08 §9.2 写出 1–7 节；第 7 节强制「撮合假设未验证」/未校准
 - `PortfolioBacktestResult` 增加 `reject_stats`、CAGR/Sharpe/Calmar、分年度、成本占比
 - CLI `backtest --strategy l2_equal_topn` / `make backtest-l2-report` → `docs/backtest-reports/`
-- 对照组 / 蒙特卡洛 / 真实 CSI300 长窗报告仍待接
+
+**真实 CSI300 L2 长窗（2026-10-27）**:
+- `backtest/l2_panel.py`：PIT 加载 + 冻结 `CSI300_L2_IC_MEANS_5Y` 符号对齐 + 按日成分过滤 → `L2TopNBacktest`
+- CLI `--from-db` / `make backtest-l2-csi300` → `docs/backtest-reports/l2_equal_topn-csi300-5y.md`
+- 日频初跑（作废对照）：−31.6% / 费用 17.0 万 — 日频换手过高（与 docs/08 §2.5 不符）
+- **周频**（默认，255 次调仓）：总收益 **−5.4%**，CAGR −1.1%，MDD −24.7%，费用 ≈10.0 万；同窗 CSI300 BH ≈ −13.0% → 相对指数约 **+7.6pp**
+- §6 对照（同周频撮合）：BH −13.0%｜等权池(n=50) −18.1%｜最强单因子 `max_ret_20d` −29.8%｜随机 Top-15 95 分位 −53.1% → 本策略 **超出随机范围**（`backtest/controls.py` / `--with-controls`）
+- 第 7 节仍标未校准
 
 **下一步（Gate 4）**:
-- 用真实 CSI300 L2 分数跑长窗组合回测并落报告（仍标未校准）
-- 蒙特卡洛随机选股对照
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
+- 可选：月频再平衡 / 降低费用敏感度；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
