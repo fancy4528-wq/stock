@@ -85,9 +85,7 @@ def scores_from_single_factor(
     if code not in panel.columns:
         raise QuantAgentError(f"factor column missing for control: {code}")
     key = "symbol" if "symbol" in panel.columns else entity_col(panel)
-    aligned = (
-        (1.0 - pl.col(code)) if ic_mean < 0 else pl.col(code)
-    ).alias("_score")
+    aligned = ((1.0 - pl.col(code)) if ic_mean < 0 else pl.col(code)).alias("_score")
     rows = (
         panel.filter(
             (pl.col("trade_date") >= start)
@@ -139,7 +137,9 @@ def random_topn_scores(
     rng = random.Random(seed)
     out: dict[date, dict[str, float]] = {}
     for day in sorted(membership):
-        members = list(membership[day])
+        # Sort before sampling. Set iteration order changes across processes,
+        # which would make the same seed produce a different Top-N.
+        members = sorted(membership[day])
         if not members:
             continue
         k = min(top_n, len(members))
@@ -187,9 +187,7 @@ async def _run_topn(
         strategy=strategy,
         rebalance=rebalance,
     )
-    result = await L2TopNBacktest(guard=guard).run(
-        cfg, scores=scores, bars_by_date=bars_by_date
-    )
+    result = await L2TopNBacktest(guard=guard).run(cfg, scores=scores, bars_by_date=bars_by_date)
     return float(result.total_return)
 
 
@@ -212,9 +210,7 @@ async def run_control_suite(
     membership = panel.membership
     if not membership:
         # Fall back to score keys as the tradable set each day.
-        membership = {
-            d: frozenset(syms) for d, syms in panel.scores.items() if syms
-        }
+        membership = {d: frozenset(syms) for d, syms in panel.scores.items() if syms}
     means = dict(panel.ic_means or CSI300_L2_IC_MEANS_5Y)
     code = pick_best_single_factor(
         means, panel.factor_codes, preferred=best_factor or DEFAULT_BEST_SINGLE_FACTOR
@@ -271,9 +267,7 @@ async def run_control_suite(
     print(f"controls: Monte Carlo random Top-{top_n} x{mc_trials}", flush=True)
     random_rets: list[float] = []
     for i in range(mc_trials):
-        rnd_scores = random_topn_scores(
-            membership, top_n=top_n, seed=mc_seed + i
-        )
+        rnd_scores = random_topn_scores(membership, top_n=top_n, seed=mc_seed + i)
         ret = await _run_topn(
             bars_by_date=bars_by_date,
             scores=rnd_scores,
@@ -312,7 +306,6 @@ async def run_control_suite(
         notes=(
             f"equal pool n={pool_n} (shadow_baseline-aligned)",
             f"best single=`{code}` by L1 |ICIR| leader among admitted",
-            f"MC trials={mc_trials} seed={mc_seed} "
-            f"p50={p50:+.2%} p80={p80:+.2%} p95={p95:+.2%}",
+            f"MC trials={mc_trials} seed={mc_seed} p50={p50:+.2%} p80={p80:+.2%} p95={p95:+.2%}",
         ),
     )
