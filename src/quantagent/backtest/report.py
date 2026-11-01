@@ -66,6 +66,16 @@ def _num(x: float | None, digits: int = 3) -> str:
     return f"{x:.{digits}f}"
 
 
+def _cny(x: float | None) -> str:
+    if x is None:
+        return "—"
+    if abs(x) >= 1e8:
+        return f"{x / 1e8:.2f} 亿"
+    if abs(x) >= 1e4:
+        return f"{x / 1e4:.1f} 万"
+    return f"{x:,.0f}"
+
+
 def _reject_line(stats: dict[str, int], *keys: str) -> int:
     return sum(stats.get(k, 0) for k in keys)
 
@@ -106,16 +116,10 @@ def render_portfolio_backtest_report(
         disclaimer_banner = f"Matching: **未校准 — {matching.disclaimer}**"
 
     reject_rows = (
-        "\n".join(f"| `{k}` | {v} |" for k, v in reject.items())
-        if reject
-        else "| （无） | 0 |"
+        "\n".join(f"| `{k}` | {v} |" for k, v in reject.items()) if reject else "| （无） | 0 |"
     )
     yearly = result.yearly_returns
-    yearly_txt = (
-        " | ".join(f"{y} {_pct(r)}" for y, r in sorted(yearly.items()))
-        if yearly
-        else "—"
-    )
+    yearly_txt = " | ".join(f"{y} {_pct(r)}" for y, r in sorted(yearly.items())) if yearly else "—"
     profit_years = sum(1 for r in yearly.values() if r > 0)
     n_years = len(yearly)
 
@@ -161,9 +165,10 @@ def render_portfolio_backtest_report(
 | Metric | Value |
 |---|---|
 | Max Drawdown | {_pct(result.max_drawdown)} |
+| MDD 持续天数 | {result.mdd_duration_days if result.mdd_duration_days is not None else "—"} |
 | Calmar | {_num(result.calmar)} |
 | Volatility (ann.) | {_pct(result.volatility) if result.volatility is not None else "—"} |
-| Sortino | —（未算） |
+| Sortino | {_num(result.sortino)} |
 
 ## 3. 收益
 
@@ -179,7 +184,7 @@ def render_portfolio_backtest_report(
 
 - 分年度: {yearly_txt}
 - 盈利年份: {profit_years}/{n_years}（无年份序列时为 0/0）
-- 最差月份: —（未算）
+- 最差月份: {_pct(result.worst_month)}
 
 ## 5. 成本与容量
 
@@ -187,9 +192,11 @@ def render_portfolio_backtest_report(
 |---|---|
 | Total fees | {result.total_fees:,.2f} |
 | 成本 / |总收益| | {_pct(result.cost_to_pnl) if result.cost_to_pnl is not None else "—"} |
-| 年换手率 | —（未算） |
-| 单笔占成交量 | —（未算） |
-| 估计容量 | —（未算） |
+| 年换手率 | {_pct(result.turnover_annual)} |
+| 单笔占成交量 | {_pct(result.avg_volume_share)} |
+| 估计容量 | {_cny(result.capacity_estimate)} |
+
+容量按平均净值放大到平均单笔成交量占比等于 `max_volume_share`。换手率为单边、按平均净值年化。
 
 ### 拒单原因
 
@@ -236,9 +243,7 @@ def write_portfolio_backtest_report(
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
-        render_portfolio_backtest_report(
-            result, matching=matching, bias=bias, controls=controls
-        ),
+        render_portfolio_backtest_report(result, matching=matching, bias=bias, controls=controls),
         encoding="utf-8",
     )
     return out

@@ -1,6 +1,6 @@
 # Portfolio backtest: `l2_equal_topn`
 
-> period 2024-01-02 → 2024-01-11 | top_n=1 | code_version=`dev` | param_search_count=0
+> period 2024-01-02 → 2024-01-11 | top_n=1 | rebalance=daily (n=7) | code_version=`dev` | param_search_count=0
 > Matching: **未校准 — 撮合假设未验证**
 
 ## 1. 防偏差检查
@@ -16,9 +16,10 @@
 | Metric | Value |
 |---|---|
 | Max Drawdown | -3.22% |
+| MDD 持续天数 | 5 |
 | Calmar | 32.136 |
 | Volatility (ann.) | +28.92% |
-| Sortino | —（未算） |
+| Sortino | 5.576 |
 
 ## 3. 收益
 
@@ -34,7 +35,7 @@
 
 - 分年度: 2024 +1.77%
 - 盈利年份: 1/1（无年份序列时为 0/0）
-- 最差月份: —（未算）
+- 最差月份: +1.77%
 
 ## 5. 成本与容量
 
@@ -42,9 +43,11 @@
 |---|---|
 | Total fees | 5,104.17 |
 | 成本 / |总收益| | +28.88% |
-| 年换手率 | —（未算） |
-| 单笔占成交量 | —（未算） |
-| 估计容量 | —（未算） |
+| 年换手率 | +14443.35% |
+| 单笔占成交量 | +5.00% |
+| 估计容量 | 101.4 万 |
+
+容量按平均净值放大到平均单笔成交量占比等于 `max_volume_share`。换手率为单边、按平均净值年化。
 
 ### 拒单原因
 
@@ -79,6 +82,7 @@
 ## Notes
 
 - signal at close, fill at next open
+- rebalance=daily (n=7)
 - matching assumptions unverified
 
 ---
