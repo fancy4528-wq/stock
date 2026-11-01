@@ -139,9 +139,16 @@
 - `agent-eval`：5d/20d 截面 Spearman、样本加权 ranking IC、confidence 四档命中率与校准斜率
 - 有效截面不足 20 天时报告只作跟踪，不据此改 Fusion 权重
 
+**信号相关与月度自评（2026-11-01）**:
+- `signal_scores.jsonl`：日报流水线按日追加 factor / quant / stock 截面（与 shadow 所用分数相同；synthetic 行默认不进相关）
+- `signal-corr`：日截面 Spearman 等权平均；绝对相关 > 0.7 且 ≥20 天才标「应合并」；不足 20 天只跟踪。命令不改 Fusion 权重
+- `monthly-review`：docs/08 §8.2 七节。因子近期 IC 未传入时状态为「未观测」，不标衰减。决策日志没有 regime 标签，分条件准确率留空
+- 历史日期没有信号截面（日记从这次改动之后才写），相关矩阵要等 live 流水线继续积累
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
 - 等前向打分日志攒够 5d/20d 标签后再读 IC；样本不足前不降权
+- 信号相关同样等 live 截面满 20 天后再决定是否合并；之前不改 equal-v1
 - 可选：月频再平衡 / 降低费用敏感度；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)

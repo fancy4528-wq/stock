@@ -307,3 +307,15 @@ Totals: scanned=47 L1_pass=0 L2_rel=0 L2_deep=0 L3=0 USD=$0.0000 ($0.0000/day).
 | 2026-11-01T05:49:02.072060+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
 | 2026-11-01T06:10:00.588195+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1159 | 0.0005 |
 | 2026-11-01T06:10:00.588195+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-11-01T06:46:17.780793+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1075 | 0.0005 |
+| 2026-11-01T06:46:17.781793+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-11-01T06:51:58.007132+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1150 | 0.0005 |
+| 2026-11-01T06:51:58.007132+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-11-01T07:31:31.174069+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1095 | 0.0005 |
+| 2026-11-01T07:31:31.174069+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-11-01T07:32:49.361977+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1082 | 0.0005 |
+| 2026-11-01T07:32:49.362977+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-11-01T07:33:54.154621+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1102 | 0.0005 |
+| 2026-11-01T07:33:54.160631+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |
+| 2026-11-01T07:54:59.124943+00:00 | 20260901-cn-daily | reporter | daily_research | deepseek-flash | llm | 1412 | 1062 | 0.0005 |
+| 2026-11-01T07:54:59.124943+00:00 | 20260901-cn-daily | reporter | daily_research | deterministic | llm_schema_fail | 0 | 0 | 0.0000 |

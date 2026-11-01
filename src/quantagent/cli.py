@@ -33,6 +33,22 @@ def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
+def _parse_month(value: str) -> str:
+    text = value.strip()
+    if len(text) != 7 or text[4] != "-":
+        raise argparse.ArgumentTypeError("month must be YYYY-MM")
+    year, month = int(text[:4]), int(text[5:])
+    if not 1 <= month <= 12:
+        raise argparse.ArgumentTypeError("month must be YYYY-MM")
+    return f"{year:04d}-{month:02d}"
+
+
+def _previous_month(today: date) -> str:
+    if today.month == 1:
+        return f"{today.year - 1}-12"
+    return f"{today.year:04d}-{today.month - 1:02d}"
+
+
 def _run_evaluate_l2(
     *,
     market: str,
@@ -2161,6 +2177,87 @@ def _run_agent_eval(
     return 0
 
 
+def _run_signal_corr(
+    *,
+    shadow_dir: Path,
+    prices: Path | None,
+    out: Path,
+    include_synthetic: bool,
+) -> int:
+    import polars as pl
+
+    from quantagent.evaluation.signals import (
+        SignalCorrError,
+        check_signal_independence,
+        load_signal_score_days,
+        write_signal_corr_report,
+    )
+
+    frame = pl.read_parquet(prices) if prices is not None else None
+    try:
+        result = check_signal_independence(
+            load_signal_score_days(shadow_dir),
+            prices=frame,
+            include_synthetic=include_synthetic,
+        )
+    except SignalCorrError as exc:
+        print(f"signal-corr: {exc}", file=sys.stderr)
+        return 1
+    path = write_signal_corr_report(result, out)
+    print(
+        f"signal-corr: days={result.n_days} pairs={len(result.pairs)} "
+        f"weights_changed={result.weights_changed} wrote {path}"
+    )
+    return 0
+
+
+def _run_monthly_review(
+    *,
+    month: str,
+    shadow_dir: Path,
+    cost_log: Path,
+    prices: Path | None,
+    out: Path,
+    include_synthetic: bool,
+) -> int:
+    import polars as pl
+
+    from quantagent.evaluation.agent import evaluate_agent_scores, load_agent_score_days
+    from quantagent.evaluation.agent.evaluate import AgentEvalError
+    from quantagent.evaluation.review import build_monthly_review, write_monthly_review
+    from quantagent.evaluation.signals import SignalCorrError
+
+    frame = None
+    agent = None
+    agent_note = ""
+    if prices is not None:
+        frame = pl.read_parquet(prices)
+        try:
+            agent = evaluate_agent_scores(load_agent_score_days(shadow_dir), frame)
+        except AgentEvalError as exc:
+            agent_note = f"Agent IC 未算出：{exc}"
+    cost_text = cost_log.read_text(encoding="utf-8") if cost_log.is_file() else None
+    try:
+        review = build_monthly_review(
+            month=month,
+            shadow_dir=shadow_dir,
+            cost_log_text=cost_text,
+            prices=frame,
+            include_synthetic_signals=include_synthetic,
+            agent=agent,
+            agent_note=agent_note,
+        )
+    except SignalCorrError as exc:
+        print(f"monthly-review: {exc}", file=sys.stderr)
+        return 1
+    path = write_monthly_review(review, out)
+    print(
+        f"monthly-review: {month} shadow_days={sum(row.n_days for row in review.shadows)} "
+        f"signal_days={review.signals.n_days} wrote {path}"
+    )
+    return 0
+
+
 def _run_dashboard(
     *,
     shadow_dir: Path,
@@ -2812,6 +2909,58 @@ def main(argv: list[str] | None = None) -> int:
     )
     dashboard.add_argument("--out", type=Path, default=Path("docs/dashboard/index.html"))
 
+    signal_corr = sub.add_parser(
+        "signal-corr",
+        help="Spearman correlation of recorded factor / quant / stock scores (docs/08 §7.3)",
+    )
+    signal_corr.add_argument("--shadow-dir", type=Path, default=Path("data/shadow"))
+    signal_corr.add_argument(
+        "--prices",
+        type=Path,
+        default=None,
+        help="Optional parquet (symbol, trade_date, close) for standalone IC",
+    )
+    signal_corr.add_argument(
+        "--out",
+        type=Path,
+        default=Path("docs/reviews/signal-corr.md"),
+    )
+    signal_corr.add_argument(
+        "--include-synthetic",
+        action="store_true",
+        help="Include synthetic daily-report rows (default: live only)",
+    )
+
+    monthly = sub.add_parser(
+        "monthly-review",
+        help="Monthly self-evaluation from shadow, signal, agent, and cost journals",
+    )
+    monthly.add_argument(
+        "--month",
+        type=_parse_month,
+        default=_previous_month(date.today()),
+        help="Calendar month YYYY-MM (default: previous month)",
+    )
+    monthly.add_argument("--shadow-dir", type=Path, default=Path("data/shadow"))
+    monthly.add_argument("--cost-log", type=Path, default=Path("docs/cost-log.md"))
+    monthly.add_argument(
+        "--prices",
+        type=Path,
+        default=None,
+        help="Optional parquet used to recompute Agent IC and signal IC",
+    )
+    monthly.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Markdown path (default: docs/reviews/YYYY-MM.md)",
+    )
+    monthly.add_argument(
+        "--include-synthetic",
+        action="store_true",
+        help="Include synthetic signal rows in the correlation section",
+    )
+
     sched = sub.add_parser(
         "schedule",
         help="APScheduler daily live pipeline (ingest→seed→report; A4)",
@@ -3401,6 +3550,26 @@ def main(argv: list[str] | None = None) -> int:
             shadow_dir=args.shadow_dir,
             prices=args.prices,
             out=args.out,
+        )
+
+    if args.command == "signal-corr":
+        return _run_signal_corr(
+            shadow_dir=args.shadow_dir,
+            prices=args.prices,
+            out=args.out,
+            include_synthetic=bool(args.include_synthetic),
+        )
+
+    if args.command == "monthly-review":
+        month = str(args.month)
+        out = args.out if args.out is not None else Path("docs/reviews") / f"{month}.md"
+        return _run_monthly_review(
+            month=month,
+            shadow_dir=args.shadow_dir,
+            cost_log=args.cost_log,
+            prices=args.prices,
+            out=out,
+            include_synthetic=bool(args.include_synthetic),
         )
 
     if args.command == "dashboard":

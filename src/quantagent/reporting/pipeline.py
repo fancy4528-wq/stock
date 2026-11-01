@@ -35,6 +35,7 @@ from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine, scores_from
 from quantagent.evaluation.shadow.quant_signals import load_l2_equal_scores
 from quantagent.evaluation.shadow.stats import summarize_unfilled
 from quantagent.evaluation.shadow.types import ShadowDayRecord
+from quantagent.evaluation.signals import SignalScoreDay, append_signal_score_day
 from quantagent.execution.broker.simulated import PriceBar
 from quantagent.reporting.daily import write_daily_report
 from quantagent.reporting.live import finalize_live_bundle, load_live_report_data
@@ -297,6 +298,42 @@ def _record_agent_scores(
         logger.info("agent scores recorded as_of=%s n=%d", as_of, len(points))
 
 
+def _record_signal_scores(
+    shadow_dir: Path | str,
+    *,
+    as_of: date,
+    run_id: str,
+    factor_scores: dict[str, float],
+    quant_scores: dict[str, float],
+    agent_scores: dict[str, float],
+    origin: Literal["live", "synthetic"],
+) -> None:
+    """Store the cross-sections Fusion and the shadows just consumed.
+
+    ``stock`` is the Agent map. ``factor`` is shadow_factor only and is not a
+    Fusion slot. Empty maps are omitted. A date already in the journal is kept.
+    """
+    signals: dict[str, dict[str, float]] = {}
+    if factor_scores:
+        signals["factor"] = factor_scores
+    if quant_scores:
+        signals["quant"] = quant_scores
+    if agent_scores:
+        signals["stock"] = agent_scores
+    wrote = append_signal_score_day(
+        shadow_dir,
+        SignalScoreDay(
+            as_of=as_of,
+            run_id=run_id,
+            origin=origin,
+            code_version="dev",
+            signals=signals,
+        ),
+    )
+    if wrote:
+        logger.info("signal scores recorded as_of=%s signals=%s", as_of, sorted(signals))
+
+
 async def run_daily_pipeline(
     *,
     as_of: date | None = None,
@@ -323,9 +360,11 @@ async def run_daily_pipeline(
     notes, not hard stops.
 
     Each run appends that day's raw Agent score and confidence to
-    ``shadow_dir/agent_scores.jsonl`` (one row per ``as_of``). Forward IC is
-    a separate ``agent-eval`` pass once returns exist. After the markdown is
-    written, the static dashboard next to ``out_dir`` is rebuilt.
+    ``shadow_dir/agent_scores.jsonl``, and the factor / quant / stock
+    cross-sections actually passed to the shadows to
+    ``shadow_dir/signal_scores.jsonl`` (one row per ``as_of``). Forward IC and
+    the signal correlation are separate passes once returns exist. After the
+    markdown is written, the static dashboard next to ``out_dir`` is rebuilt.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -351,6 +390,15 @@ async def run_daily_pipeline(
             as_of=as_of,
             run_id=run_id,
             points=_synthetic_agent_points(symbols),
+            origin="synthetic",
+        )
+        _record_signal_scores(
+            shadow_dir,
+            as_of=as_of,
+            run_id=run_id,
+            factor_scores=scores,
+            quant_scores=quant_scores,
+            agent_scores=agent_scores,
             origin="synthetic",
         )
         engine = ShadowEngine(
@@ -422,6 +470,15 @@ async def run_daily_pipeline(
             as_of=as_of,
             run_id=run_id,
             points=agent_points,
+            origin="live",
+        )
+        _record_signal_scores(
+            shadow_dir,
+            as_of=as_of,
+            run_id=run_id,
+            factor_scores=live.factor_scores,
+            quant_scores=quant_scores,
+            agent_scores=agent_scores,
             origin="live",
         )
         n = len(live.symbols)
