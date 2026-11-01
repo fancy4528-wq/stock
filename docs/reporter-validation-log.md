@@ -53,3 +53,21 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-10-26T12:47:28.777152+00:00 | 20261026-cn-daily | 2026-10-26 | reporter | deterministic | true |  |  |
 | 2026-10-27T10:03:09.244400+00:00 | 20261027-cn-daily | 2026-10-27 | reporter | llm | false | SchemaValidationError | 8 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
 | 2026-10-27T10:03:09.244400+00:00 | 20261027-cn-daily | 2026-10-27 | reporter | deterministic | true |  |  |
+| 2026-10-27T13:01:36.072661+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-10-27T13:01:36.073660+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-10-27T13:02:09.362724+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-10-27T13:02:09.362724+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-10-27T13:21:54.330569+00:00 | 20261027-cn-daily | 2026-10-27 | reporter | llm | false | SchemaValidationError | 8 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-27T13:21:54.330569+00:00 | 20261027-cn-daily | 2026-10-27 | reporter | deterministic | true |  |  |
+| 2026-10-28T10:01:50.495972+00:00 | 20261028-cn-daily | 2026-10-28 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-28T10:01:50.496953+00:00 | 20261028-cn-daily | 2026-10-28 | reporter | deterministic | true |  |  |
+| 2026-10-29T10:05:08.390213+00:00 | 20261029-cn-daily | 2026-10-29 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-29T10:05:08.391212+00:00 | 20261029-cn-daily | 2026-10-29 | reporter | deterministic | true |  |  |
+| 2026-10-30T10:02:07.955358+00:00 | 20261030-cn-daily | 2026-10-30 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-10-30T10:02:07.955951+00:00 | 20261030-cn-daily | 2026-10-30 | reporter | deterministic | true |  |  |
+| 2026-11-01T05:46:06.418957+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T05:46:06.419958+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T05:49:02.072060+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T05:49:02.072060+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T06:10:00.588195+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T06:10:00.588195+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |

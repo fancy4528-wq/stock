@@ -2096,6 +2096,49 @@ def _run_report(
     return 0
 
 
+def _run_agent_eval(
+    *,
+    shadow_dir: Path,
+    prices: Path | None,
+    out: Path,
+) -> int:
+    from quantagent.evaluation.agent import (
+        evaluate_agent_scores,
+        load_agent_score_days,
+        write_agent_eval_report,
+    )
+    from quantagent.evaluation.agent.evaluate import AgentEvalError
+
+    days = load_agent_score_days(shadow_dir)
+    live_days = [day for day in days if day.origin != "synthetic"]
+    if not live_days:
+        print(
+            f"agent-eval: no live scores in {shadow_dir / 'agent_scores.jsonl'}",
+            file=sys.stderr,
+        )
+        return 1
+    if prices is None:
+        n_points = sum(len(day.points) for day in live_days)
+        print(
+            f"agent-eval: journal days={len(live_days)} points={n_points}; "
+            "pass --prices to score IC"
+        )
+        return 0
+
+    import polars as pl
+
+    frame = pl.read_parquet(prices)
+    try:
+        result = evaluate_agent_scores(days, frame)
+    except AgentEvalError as exc:
+        print(f"agent-eval: {exc}", file=sys.stderr)
+        return 1
+    path = write_agent_eval_report(result, out)
+    ic = "n/a" if result.score_ic_5d is None else f"{result.score_ic_5d:+.4f}"
+    print(f"agent-eval: score_ic_5d={ic} ic_days={result.n_ic_days_5d} wrote {path}")
+    return 0
+
+
 def _run_schedule(
     *,
     once: bool,
@@ -2688,6 +2731,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Build report from PITRepository (requires ingest + seed-universe)",
     )
 
+    agent_eval = sub.add_parser(
+        "agent-eval",
+        help="Agent score IC and confidence calibration from the forward journal",
+    )
+    agent_eval.add_argument(
+        "--shadow-dir",
+        type=Path,
+        default=Path("data/shadow"),
+        help="Directory containing agent_scores.jsonl",
+    )
+    agent_eval.add_argument(
+        "--prices",
+        type=Path,
+        default=None,
+        help="Parquet with symbol, trade_date, close (optional limit flags)",
+    )
+    agent_eval.add_argument(
+        "--out",
+        type=Path,
+        default=Path("docs/agent-eval/agent-ic.md"),
+        help="Markdown report path (written only when --prices is set)",
+    )
+
     sched = sub.add_parser(
         "schedule",
         help="APScheduler daily live pipeline (ingest→seed→report; A4)",
@@ -3270,6 +3336,13 @@ def main(argv: list[str] | None = None) -> int:
             shadow_dir=args.shadow_dir,
             synthetic=synthetic,
             universe=args.universe,
+        )
+
+    if args.command == "agent-eval":
+        return _run_agent_eval(
+            shadow_dir=args.shadow_dir,
+            prices=args.prices,
+            out=args.out,
         )
 
     if args.command == "schedule":
