@@ -100,7 +100,7 @@
 
 ## P4 (2026-10-16 ~ )
 
-**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；真实 CSI300 5y 报告已出；`shadow_fused` / `shadow_fused_norisk` 已接入；撮合假设未校准）
+**Gate 4 状态**: 进行中（L2 Top-N 组合回测已接入共享撮合；未来数据哨兵通过；2018 快照含后来退市股票；§9.2 报告模板已落地；真实 CSI300 5y 报告已出；`shadow_fused` / `shadow_fused_norisk` 已接入；Agent IC / confidence 校准可对前向打分日志计算；撮合假设未校准）
 
 **已完成**:
 - `rebalance_equal_weight` 从 shadow 抽出，回测与 shadow 共用 `SimulatedBroker`
@@ -133,9 +133,14 @@
 - `shadow_fused_norisk`：同一套 Fusion Top-N，跳过风控（notes 含 `risk_skipped`）
 - 按组合幂等追赶；流动性用当日 `amount` 作 `avg_amount_20d` 代理
 
+**Agent IC / Confidence 校准（2026-11-01）**:
+- 日报把当日原始 score / confidence 追加到 `data/shadow/agent_scores.jsonl`（按 `as_of` 幂等，不回放 LLM；synthetic 行带 `origin`，评估时默认忽略）
+- `agent-eval`：5d/20d 截面 Spearman、样本加权 ranking IC、confidence 四档命中率与校准斜率
+- 有效截面不足 20 天时报告只作跟踪，不据此改 Fusion 权重
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
-- Agent IC / Confidence 校准
+- 等前向打分日志攒够 5d/20d 标签后再读 IC；样本不足前不降权
 - 可选：月频再平衡 / 降低费用敏感度；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)

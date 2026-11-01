@@ -6,6 +6,7 @@ import logging
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Literal
 
 from quantagent.agents.base import AgentContext
 from quantagent.agents.llm.factory import build_llm_client, build_token_budget
@@ -23,6 +24,13 @@ from quantagent.agents.tools.market import (
     ShadowStatusRow,
 )
 from quantagent.core.repository.pit import PITRepository
+from quantagent.evaluation.agent import (
+    AgentScoreDay,
+    AgentScorePoint,
+    append_agent_score_day,
+    points_from_brief,
+    points_from_score_map,
+)
 from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine, scores_from_brief
 from quantagent.evaluation.shadow.quant_signals import load_l2_equal_scores
 from quantagent.evaluation.shadow.stats import summarize_unfilled
@@ -191,6 +199,18 @@ def _synthetic_agent_scores(symbols: list[str]) -> dict[str, float]:
     return {sym: float((i * 7 + 3) % max(n, 1)) / max(n, 1) for i, sym in enumerate(symbols)}
 
 
+def _synthetic_agent_points(symbols: list[str]) -> list[AgentScorePoint]:
+    """Raw score plus a confidence spread, for the forward IC journal.
+
+    Shadow still uses ``_synthetic_agent_scores`` alone. Confidence is stored
+    beside the score so calibration is not baked into the ranking.
+    """
+    scores = _synthetic_agent_scores(symbols)
+    buckets = (0.4, 0.6, 0.75, 0.9)
+    confidences = {sym: buckets[i % 4] for i, sym in enumerate(symbols)}
+    return points_from_score_map(scores, confidences)
+
+
 def _synthetic_quant_scores(symbols: list[str]) -> dict[str, float]:
     """Deterministic L2-like ranking distinct from factor and agent Top-N."""
     n = len(symbols)
@@ -221,10 +241,14 @@ async def _live_agent_scores(
     universe_code: str,
     repo: PITRepository,
     run_research: bool,
-) -> tuple[dict[str, float], list[str]]:
-    """Soft-run research DAG (heuristic, no RAG) for shadow_agent scores."""
+) -> tuple[dict[str, float], list[AgentScorePoint], list[str]]:
+    """Soft-run research DAG (heuristic, no RAG) for shadow_agent scores.
+
+    The score map keeps the small confidence tie-break used by shadow.
+    Points keep raw score and confidence for the IC journal.
+    """
     if not run_research:
-        return {}, ["shadow_agent: research skipped"]
+        return {}, [], ["shadow_agent: research skipped"]
     try:
         from quantagent.agents.orchestrator import run_research_live
 
@@ -238,16 +262,39 @@ async def _live_agent_scores(
             use_llm=False,
             repo=repo,
         )
+        points = points_from_brief(result.brief)
         scores = scores_from_brief(result.brief)
         notes: list[str] = []
         if result.aborted:
             notes.append(f"shadow_agent: research aborted ({result.abort_reason})")
         if not scores:
             notes.append("shadow_agent: empty stock_ranking")
-        return scores, notes
+        return scores, points, notes
     except Exception as exc:  # noqa: BLE001 — soft-fail into degraded notes
         logger.warning("shadow_agent research failed: %s", exc)
-        return {}, [f"shadow_agent: research failed ({type(exc).__name__}: {exc})"]
+        return {}, [], [f"shadow_agent: research failed ({type(exc).__name__}: {exc})"]
+
+
+def _record_agent_scores(
+    shadow_dir: Path | str,
+    *,
+    as_of: date,
+    run_id: str,
+    points: list[AgentScorePoint],
+    origin: Literal["live", "synthetic"],
+) -> None:
+    wrote = append_agent_score_day(
+        shadow_dir,
+        AgentScoreDay(
+            as_of=as_of,
+            run_id=run_id,
+            points=points,
+            code_version="dev",
+            origin=origin,
+        ),
+    )
+    if wrote:
+        logger.info("agent scores recorded as_of=%s n=%d", as_of, len(points))
 
 
 async def run_daily_pipeline(
@@ -274,6 +321,10 @@ async def run_daily_pipeline(
     ``shadow_fused`` / ``shadow_fused_norisk`` fuse quant+agent inside
     ``ShadowEngine`` (norisk skips RiskEngine). Failures become degraded
     notes, not hard stops.
+
+    Each run appends that day's raw Agent score and confidence to
+    ``shadow_dir/agent_scores.jsonl`` (one row per ``as_of``). Forward IC is
+    a separate ``agent-eval`` pass once returns exist.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -294,6 +345,13 @@ async def run_daily_pipeline(
         scores = {sym: 1.0 - i * 0.01 for i, sym in enumerate(symbols)}
         quant_scores = _synthetic_quant_scores(symbols)
         agent_scores = _synthetic_agent_scores(symbols)
+        _record_agent_scores(
+            shadow_dir,
+            as_of=as_of,
+            run_id=run_id,
+            points=_synthetic_agent_points(symbols),
+            origin="synthetic",
+        )
         engine = ShadowEngine(
             shadow_dir,
             cfg=ShadowConfig(
@@ -351,12 +409,19 @@ async def run_daily_pipeline(
             universe_code=universe_code,
             repo=pit,
         )
-        agent_scores, agent_notes = await _live_agent_scores(
+        agent_scores, agent_points, agent_notes = await _live_agent_scores(
             as_of=as_of,
             market=market,
             universe_code=universe_code,
             repo=pit,
             run_research=run_research,
+        )
+        _record_agent_scores(
+            shadow_dir,
+            as_of=as_of,
+            run_id=run_id,
+            points=agent_points,
+            origin="live",
         )
         n = len(live.symbols)
         n_scored = len(live.factor_scores)
@@ -369,9 +434,7 @@ async def run_daily_pipeline(
                 factor_top_n=min(15, max(n_scored, 1)),
                 quant_top_n=min(15, max(n_quant, 1)) if n_quant else 15,
                 agent_top_n=min(15, max(n_agent, 1)) if n_agent else 15,
-                fused_top_n=min(
-                    15, max(max(n_quant, n_agent), 1)
-                ),
+                fused_top_n=min(15, max(max(n_quant, n_agent), 1)),
             ),
             code_version="dev",
         )
