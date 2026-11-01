@@ -15,5 +15,6 @@ build/
 .coverage
 coverage.json
 htmlcov/
+/docs/dashboard/
 .DS_Store
 Thumbs.db

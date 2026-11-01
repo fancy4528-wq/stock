@@ -30,6 +30,9 @@ dependencies = [
     "lightgbm",
     "scikit-learn",
     "baostock>=0.9.3",
+    "jinja2>=3.1.6",
+    "plotly>=7.1.0",
+    "markdown>=3.11.2",
 ]
 
 [project.optional-dependencies]
@@ -71,7 +74,17 @@ plugins = ["pydantic.mypy"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["akshare.*", "akshare", "baostock.*", "baostock", "fastembed.*", "fastembed"]
+module = [
+    "akshare.*",
+    "akshare",
+    "baostock.*",
+    "baostock",
+    "fastembed.*",
+    "fastembed",
+    "plotly.*",
+    "markdown",
+    "markdown.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
