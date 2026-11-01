@@ -45,6 +45,7 @@ async def test_run_once_synthetic(tmp_path: Path) -> None:
     assert (shadow / "shadow_fused.jsonl").exists()
     assert (shadow / "shadow_fused_norisk.jsonl").exists()
     assert (shadow / "agent_scores.jsonl").exists()
+    assert (shadow / "signal_scores.jsonl").exists()
     dashboard = tmp_path / "dashboard" / "index.html"
     assert dashboard.exists()
     assert "A股市场日报" in dashboard.read_text(encoding="utf-8")

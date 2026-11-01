@@ -71,3 +71,15 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-11-01T05:49:02.072060+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
 | 2026-11-01T06:10:00.588195+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
 | 2026-11-01T06:10:00.588195+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T06:46:17.781793+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T06:46:17.781793+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T06:51:58.007132+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T06:51:58.007132+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T07:31:31.174069+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T07:31:31.174069+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T07:32:49.362977+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T07:32:49.362977+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T07:33:54.156632+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T07:33:54.160631+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-01T07:54:59.124943+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
+| 2026-11-01T07:54:59.124943+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
