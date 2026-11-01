@@ -324,7 +324,8 @@ async def run_daily_pipeline(
 
     Each run appends that day's raw Agent score and confidence to
     ``shadow_dir/agent_scores.jsonl`` (one row per ``as_of``). Forward IC is
-    a separate ``agent-eval`` pass once returns exist.
+    a separate ``agent-eval`` pass once returns exist. After the markdown is
+    written, the static dashboard next to ``out_dir`` is rebuilt.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -473,4 +474,7 @@ async def run_daily_pipeline(
     if write_cost_log:
         costs.append_cost_log(Path("docs/cost-log.md"))
         validations.append_validation_log(Path("docs/reporter-validation-log.md"))
+    from quantagent.reporting.dashboard import refresh_readout
+
+    refresh_readout(reports_dir=Path(out_dir), shadow_dir=Path(shadow_dir))
     return out

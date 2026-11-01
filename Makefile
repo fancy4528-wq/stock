@@ -1,4 +1,4 @@
-.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline backtest-l2-report backtest-l2-csi300 test-sentinel test-edge report report-live agent-eval schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
+.PHONY: help install db-init db-migrate ingest ingest-universe backfill-10y backfill-adjust-10y backfill-valuation-10y backfill-universe-monthly build-csi300 features evaluate evaluate-real evaluate-synthetic evaluate-l2 evaluate-l3 evaluate-l4 portfolio backtest backtest-baseline backtest-l2-report backtest-l2-csi300 test-sentinel test-edge report report-live agent-eval dashboard schedule schedule-live schedule-live-hang seed-universe ensure-survivorship sync-delist-dates check-survivorship reporter-validation ingest-industry ingest-calendar ingest-daily ingest-news ingest-announcements extract-news extraction-eval backfill-announcements relink-event-symbols rereport-with-events ingest-chunks ingest-reports rag-smoke research-smoke research-live research-live-accept positions-check monitor-once monitor-loop monitor-funnel-replay test lint smoke
 
 # Cross-platform YYYY-MM-DD (Windows PowerShell has no GNU ``date +%F``).
 TODAY := $(shell uv run python -c "from datetime import date; print(date.today().isoformat())")
@@ -190,6 +190,9 @@ report-live:    ## 生成真实数据日报（PIT + Shadow）
 
 agent-eval:     ## Agent IC 与 confidence 校准（可选 PRICES=panel.parquet）
 	uv run python -m quantagent.cli agent-eval --shadow-dir data/shadow $(if $(PRICES),--prices $(PRICES),) --out docs/agent-eval/agent-ic.md
+
+dashboard:      ## 只读静态看板（日报流水线、回测、agent-eval 结束时也会重写）
+	uv run python -m quantagent.cli dashboard --shadow-dir data/shadow --reports-dir docs/daily-reports --backtests-dir docs/backtest-reports --out docs/dashboard/index.html
 
 schedule:       ## 跑一次调度（synthetic demo）
 	uv run python -m quantagent.cli schedule --once --synthetic

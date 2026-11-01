@@ -2028,6 +2028,17 @@ def _run_backtest(
             controls=control_map,
         )
         print(f"wrote {out}")
+        if out.parent.name == "backtest-reports":
+            from quantagent.reporting.dashboard import refresh_readout
+
+            root = out.parent.parent
+            refresh_readout(
+                reports_dir=root / "daily-reports",
+                shadow_dir=Path("data/shadow"),
+                backtests_dir=out.parent,
+                out=root / "dashboard" / "index.html",
+                agent_eval=root / "agent-eval" / "agent-ic.md",
+            )
         return 0
 
     if strategy != "buy_and_hold":
@@ -2136,6 +2147,34 @@ def _run_agent_eval(
     path = write_agent_eval_report(result, out)
     ic = "n/a" if result.score_ic_5d is None else f"{result.score_ic_5d:+.4f}"
     print(f"agent-eval: score_ic_5d={ic} ic_days={result.n_ic_days_5d} wrote {path}")
+    from quantagent.reporting.dashboard import refresh_readout
+
+    refresh_readout(
+        reports_dir=Path("docs/daily-reports"),
+        shadow_dir=shadow_dir,
+        agent_eval=path,
+    )
+    return 0
+
+
+def _run_dashboard(
+    *,
+    shadow_dir: Path,
+    reports_dir: Path,
+    backtests_dir: Path,
+    agent_eval: Path,
+    out: Path,
+) -> int:
+    from quantagent.reporting.dashboard import write_dashboard
+
+    path = write_dashboard(
+        shadow_dir=shadow_dir,
+        reports_dir=reports_dir,
+        backtests_dir=backtests_dir,
+        out=out,
+        agent_eval=agent_eval,
+    )
+    print(f"dashboard: wrote {path}")
     return 0
 
 
@@ -2754,6 +2793,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Markdown report path (written only when --prices is set)",
     )
 
+    dashboard = sub.add_parser(
+        "dashboard",
+        help="Write the read-only static HTML dashboard (reports, shadow, backtests)",
+    )
+    dashboard.add_argument("--shadow-dir", type=Path, default=Path("data/shadow"))
+    dashboard.add_argument("--reports-dir", type=Path, default=Path("docs/daily-reports"))
+    dashboard.add_argument("--backtests-dir", type=Path, default=Path("docs/backtest-reports"))
+    dashboard.add_argument(
+        "--agent-eval",
+        type=Path,
+        default=Path("docs/agent-eval/agent-ic.md"),
+        help="Optional Agent IC markdown; omitted from the page when missing",
+    )
+    dashboard.add_argument("--out", type=Path, default=Path("docs/dashboard/index.html"))
+
     sched = sub.add_parser(
         "schedule",
         help="APScheduler daily live pipeline (ingest→seed→report; A4)",
@@ -3342,6 +3396,15 @@ def main(argv: list[str] | None = None) -> int:
         return _run_agent_eval(
             shadow_dir=args.shadow_dir,
             prices=args.prices,
+            out=args.out,
+        )
+
+    if args.command == "dashboard":
+        return _run_dashboard(
+            shadow_dir=args.shadow_dir,
+            reports_dir=args.reports_dir,
+            backtests_dir=args.backtests_dir,
+            agent_eval=args.agent_eval,
             out=args.out,
         )
 
