@@ -29,6 +29,13 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
         "",
         report.market_summary,
         "",
+    ]
+    for note in bundle.risk_notes:
+        if note.text.startswith("市场冲击"):
+            lines.append(note.text)
+            lines.append("")
+    lines.extend(
+        [
         "| 指标 | 数值 | 20日分位 |",
         "|---|---|---|",
         (
@@ -50,7 +57,8 @@ def render_daily_report(report: DailyReport, bundle: ReportBundle) -> str:
         "",
         "| 类型 | 方向 | 标的 | 摘要 |",
         "|---|---|---|---|",
-    ]
+        ]
+    )
     for ev in bundle.events[:10]:
         syms = ", ".join(ev.symbols[:3]) if ev.symbols else "—"
         summary = ev.summary.replace("|", "/")[:80]

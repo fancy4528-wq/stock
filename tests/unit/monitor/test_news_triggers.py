@@ -61,6 +61,22 @@ def test_news_trigger_industry_path() -> None:
     assert hits[0].evidence["match_kind"] == "industry"
 
 
+def test_market_shock_groups_by_keyword() -> None:
+    items = [
+        NewsFeedItem(title="中东爆发军事冲突", news_id=11, source="cls"),
+        NewsFeedItem(title="美国总统选举计票开始", news_id=12, source="cls"),
+        NewsFeedItem(title="白酒企业价格战开打", news_id=13, source="cls"),
+    ]
+    hits, stats = evaluate_news_triggers(items, {"600519.SH"}, l1=_l1())
+    assert stats.market_passed == 2
+    assert stats.passed == 2
+    assert stats.drop_no_relevance == 1
+    by_code = {h.code: h for h in hits}
+    assert by_code["MACRO_CRITICAL/军事冲突"].symbol == "MACRO"
+    assert by_code["MACRO_HIGH/总统选举"].symbol == "MACRO"
+    assert "市场消息" in by_code["MACRO_CRITICAL/军事冲突"].message
+
+
 def test_news_triggers_have_no_agents_imports() -> None:
     root = Path(__file__).resolve().parents[3]
     paths = [

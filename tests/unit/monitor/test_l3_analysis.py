@@ -73,6 +73,16 @@ def test_needs_l3_critical_ann() -> None:
         analysis_level="L1",
     )
     assert not needs_l3(px)
+    market = TriggerHit(
+        code="MACRO_CRITICAL/战争",
+        severity="critical",
+        symbol="MACRO",
+        title="MACRO_CRITICAL",
+        message="市场消息[critical]：战争升级",
+        analysis_level="L1",
+        evidence={"match_kind": "market", "l2_deep": True},
+    )
+    assert not needs_l3(market)
 
 
 def test_refine_l3_heuristic_enriches() -> None:

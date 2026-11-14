@@ -54,4 +54,6 @@ See [04-data-sources](04-data-sources.md).
 | 2026-09-27 | P2b L3 deep analysis | 复用 StockAgent；`deep`/ANN_CRITICAL 升级；日调用 ≤10；monitoring 分项计费 | `monitor/funnel/l3_analysis.py` |
 | 2026-10-03 | Gate 1 日报窗口 | 连续 20 开市日日报 2026-09-02～30（09-25～27 休市无文件）；`trading_calendar` 核验 | `docs/11-mvp.md` 8.4/8.8；`docs/phase-log.md` |
 | 2026-10-03 | Gate 2b funnel replay | 20 个交易日 L1/L2/L3 回放（heuristic）；快讯查询补 `published_at <= now` | `monitor/funnel/replay.py`；`make monitor-funnel-replay` |
+| 2026-11-14 | 市场冲击监控 | 战争/选举/制裁等不要求点名持仓；按关键词冷却，符号 `MACRO`，不进 L3；规则抽取标 `macro` | `config/monitor/market_shocks.yaml`；`monitor/funnel/market_shocks.py` |
+| 2026-11-14 | 宏观状态纳入市场冲击 | 严重负面冲击把 regime 推向 risk_off，日报写明原因；同一关键词当日只计一次；不改个股分、不改 Fusion 仓位 | `agents/macro/shocks.py`；`get_market_shocks` |
 

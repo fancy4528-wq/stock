@@ -11,6 +11,7 @@ import yaml  # type: ignore[import-untyped]
 from quantagent.agents.news_extractor.figures import extract_figures
 from quantagent.agents.news_extractor.schema import EventExtraction, EventType
 from quantagent.data.normalizers.symbol import normalize_symbol
+from quantagent.monitor.funnel.market_shocks import match_market_shock
 
 EXTRACTOR_MODEL = "rule_v1"
 EXTRACTOR_VERSION = "0.1.0"
@@ -80,7 +81,7 @@ class RuleNewsExtractor:
             except ValueError:
                 pass
 
-        event_type = self._classify(text, announce_type=announce_type)
+        event_type = self._classify(text, title=title, announce_type=announce_type)
         direction = self._direction(text)
         magnitude = self._magnitude(text, figures)
         is_relevant = bool(symbols) or event_type != "other" or bool(figures)
@@ -123,11 +124,13 @@ class RuleNewsExtractor:
             )
         return out
 
-    def _classify(self, text: str, *, announce_type: str | None) -> EventType:
+    def _classify(self, text: str, *, title: str, announce_type: str | None) -> EventType:
         if announce_type:
             for key, etype in self._announce_map.items():
                 if key in announce_type:
                     return etype  # type: ignore[return-value]
+        if match_market_shock(title) is not None:
+            return "macro"
         for etype, keys in _EVENT_KEYWORDS:
             if any(k in text for k in keys):
                 return etype

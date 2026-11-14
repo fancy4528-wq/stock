@@ -83,3 +83,23 @@ Append-only schema validation outcomes (Gate 1 fail-rate evidence).
 | 2026-11-01T07:33:54.160631+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
 | 2026-11-01T07:54:59.124943+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | llm | false | SchemaValidationError | 6 validation errors for DailyReport factor_summary   String should have at most 300 characters [type=string_too_long, in |
 | 2026-11-01T07:54:59.124943+00:00 | 20260901-cn-daily | 2026-09-01 | reporter | deterministic | true |  |  |
+| 2026-11-02T10:02:06.636398+00:00 | 20261102-cn-daily | 2026-11-02 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport sector_summary   String should have at most 400 characters [type=string_too_long, in |
+| 2026-11-02T10:02:06.638397+00:00 | 20261102-cn-daily | 2026-11-02 | reporter | deterministic | true |  |  |
+| 2026-11-03T10:02:17.324751+00:00 | 20261103-cn-daily | 2026-11-03 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-03T10:02:17.324751+00:00 | 20261103-cn-daily | 2026-11-03 | reporter | deterministic | true |  |  |
+| 2026-11-04T10:03:56.462794+00:00 | 20261104-cn-daily | 2026-11-04 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-04T10:03:56.463797+00:00 | 20261104-cn-daily | 2026-11-04 | reporter | deterministic | true |  |  |
+| 2026-11-05T10:02:11.478243+00:00 | 20261105-cn-daily | 2026-11-05 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-05T10:02:11.479246+00:00 | 20261105-cn-daily | 2026-11-05 | reporter | deterministic | true |  |  |
+| 2026-11-06T10:02:45.883335+00:00 | 20261106-cn-daily | 2026-11-06 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-06T10:02:45.884335+00:00 | 20261106-cn-daily | 2026-11-06 | reporter | deterministic | true |  |  |
+| 2026-11-11T10:44:57.371408+00:00 | 20261109-cn-daily | 2026-11-09 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-11T10:44:57.371408+00:00 | 20261109-cn-daily | 2026-11-09 | reporter | deterministic | true |  |  |
+| 2026-11-11T10:48:32.034800+00:00 | 20261110-cn-daily | 2026-11-10 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-11T10:48:32.034800+00:00 | 20261110-cn-daily | 2026-11-10 | reporter | deterministic | true |  |  |
+| 2026-11-11T10:52:04.834728+00:00 | 20261111-cn-daily | 2026-11-11 | reporter | llm | false | SchemaValidationError | 7 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-11T10:52:04.835721+00:00 | 20261111-cn-daily | 2026-11-11 | reporter | deterministic | true |  |  |
+| 2026-11-14T01:42:24.338596+00:00 | 20261112-cn-daily | 2026-11-12 | reporter | llm | false | SchemaValidationError | 8 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-14T01:42:24.338596+00:00 | 20261112-cn-daily | 2026-11-12 | reporter | deterministic | true |  |  |
+| 2026-11-14T01:43:24.059930+00:00 | 20261113-cn-daily | 2026-11-13 | reporter | llm | false | SchemaValidationError | 5 validation errors for DailyReport notable_observations.0.statement   Field required [type=missing, input_value={'metri |
+| 2026-11-14T01:43:24.060931+00:00 | 20261113-cn-daily | 2026-11-13 | reporter | deterministic | true |  |  |

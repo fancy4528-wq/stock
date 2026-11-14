@@ -75,6 +75,32 @@ def test_pass_via_industry_match_on_summary() -> None:
     assert result.severity == "high"
 
 
+def test_market_shock_passes_without_holding() -> None:
+    f = _filter()
+    result = f.check_news(
+        L1News(title="中东军事冲突升级，原油跳涨"),
+        {"600519.SH"},
+    )
+    assert result.passed is True
+    assert result.match_kind == "market"
+    assert result.severity == "critical"
+    assert result.matched_keyword == "军事冲突"
+    assert result.mentioned_symbols == []
+
+
+def test_price_war_and_board_election_stay_company_filters() -> None:
+    f = _filter()
+    price_war = f.check_news(L1News(title="行业价格战加剧"), {"600519.SH"})
+    assert price_war.passed is False
+    assert price_war.reason == "no_holding_relevance"
+    election = f.check_news(
+        L1News(title="茅台董事会换届选举"),
+        {"600519.SH"},
+    )
+    assert election.passed is False
+    assert election.reason == "low_severity_keywords"
+
+
 def test_l1_rules_have_no_agents_imports() -> None:
     """Architecture: monitor.funnel.l1_rules must not import agents."""
     root = Path(__file__).resolve().parents[3]
@@ -82,6 +108,7 @@ def test_l1_rules_have_no_agents_imports() -> None:
         root / "src" / "quantagent" / "monitor" / "funnel" / "l1_rules.py",
         root / "src" / "quantagent" / "monitor" / "funnel" / "entity_matcher.py",
         root / "src" / "quantagent" / "monitor" / "funnel" / "keywords.py",
+        root / "src" / "quantagent" / "monitor" / "funnel" / "market_shocks.py",
         root / "src" / "quantagent" / "monitor" / "funnel" / "__init__.py",
     ]
     forbidden = ("quantagent.agents", "quantagent.agents.llm", "openai", "anthropic")
