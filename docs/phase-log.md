@@ -145,11 +145,20 @@
 - `monthly-review`：docs/08 §8.2 七节。因子近期 IC 未传入时状态为「未观测」，不标衰减。决策日志没有 regime 标签，分条件准确率留空
 - 历史日期没有信号截面（日记从这次改动之后才写），相关矩阵要等 live 流水线继续积累
 
+**换手约束（2026-11-14）**:
+- `limit_turnover`（docs/09 §3.3 ⑦）：单次再平衡单向换手默认 30%（`config/portfolio/cn.yaml`）；超限时优先卖出 / 减仓，再新建仓 / 加仓
+- `rebalance_equal_weight` 与 L2 Top-N 回测共用该上限；`L2TopNConfig.max_turnover=None` 时读组合配置。Shadow 新交易日同样受限，已落盘日记不回写
+- Fusion 权重仍为 equal-v1，不因本改动调整
+- CSI300 5y 对照（同窗、`max_turnover=0.30`）：
+  - **月频** `docs/backtest-reports/l2_equal_topn-csi300-5y-monthly.md`：总收益 **+26.2%**，成本/|PnL| **11.4%**，盈利年份 **4/6**，年换手 ~3.5×，超出随机 95 分位（p95=+11.5%）
+  - **周频+换手上限** `docs/backtest-reports/l2_equal_topn-csi300-5y-weekly-to30.md`：总收益 −8.6%，费用仍高（年换手 ~12.3×）——月频为当前更优工作点
+  - 旧无上限周频报告仍保留于 `l2_equal_topn-csi300-5y.md`（−5.4% / 成本占比 185%）作对照
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
 - 等前向打分日志攒够 5d/20d 标签后再读 IC；样本不足前不降权
 - 信号相关同样等 live 截面满 20 天后再决定是否合并；之前不改 equal-v1
-- 可选：月频再平衡 / 降低费用敏感度；撮合校准仍属 Gate 7b
+- 考虑把 Gate 4 主报告默认改为月频；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 

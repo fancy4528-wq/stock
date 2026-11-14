@@ -32,6 +32,8 @@ class L2TopNConfig(BaseModel):
     risk_free: float = 0.02
     # docs/08 §2.5: weekly (Mon open) or monthly; daily turnover is too high.
     rebalance: RebalanceFreq = "weekly"
+    # One-way cap; None → config/portfolio max_turnover_per_rebalance.
+    max_turnover: float | None = None
 
 
 class PortfolioBacktestResult(BaseModel):
@@ -129,6 +131,7 @@ class L2TopNBacktest:
                     pending,
                     as_of=session,
                     run_id=cfg.strategy,
+                    max_turnover=cfg.max_turnover,
                 )
                 total_fees += sum(ack.fees for ack in acks)
                 notion, shares = _fill_participation(broker, acks, session_bars)
@@ -158,6 +161,11 @@ class L2TopNBacktest:
             volume_shares,
             max_volume_share=self.market.slippage.max_volume_share,
         )
+        to_note = (
+            f"max_turnover={cfg.max_turnover:g}"
+            if cfg.max_turnover is not None
+            else "max_turnover=portfolio_config"
+        )
         return PortfolioBacktestResult(
             strategy=cfg.strategy,
             start=cfg.start,
@@ -174,6 +182,7 @@ class L2TopNBacktest:
             notes=[
                 "signal at close, fill at next open",
                 f"rebalance={cfg.rebalance} (n={n_rebalances})",
+                to_note,
                 "matching assumptions unverified",
             ],
             reject_stats=reject_stats,
