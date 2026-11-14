@@ -48,6 +48,9 @@ def needs_l3(hit: TriggerHit) -> bool:
     if hit.analysis_level == "L3":
         return False
     ev = hit.evidence or {}
+    # Market shocks are portfolio-level; StockAgent has no single symbol to open.
+    if ev.get("match_kind") == "market" or hit.symbol == "MACRO":
+        return False
     if ev.get("needs_deep_analysis") or ev.get("l2_deep"):
         return True
     code = hit.code.split("/")[0]

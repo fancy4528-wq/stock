@@ -7,6 +7,12 @@ from typing import Any, Literal
 from quantagent.agents._heuristic import evidence
 from quantagent.agents.base import AgentContext
 from quantagent.agents.llm.structured import ResearchLlmBundle, complete_research_model
+from quantagent.agents.macro.shocks import (
+    assess_market_shocks,
+    external_from_shocks,
+    items_from_payload,
+    regime_after_shocks,
+)
 from quantagent.agents.schemas.views import (
     DimensionView,
     MacroView,
@@ -65,6 +71,9 @@ class MacroAgent:
                 "n_up": self._facts.n_up,
                 "n_down": self._facts.n_down,
                 "macro_note": self._facts.macro_note,
+                "market_shocks": [
+                    d for d in heuristic.regime_drivers if d.startswith("市场冲击[")
+                ],
             },
         }
         inject = {
@@ -89,7 +98,8 @@ class MacroAgent:
         if refined is None:
             return heuristic
         require_evidence(refined.evidence, min_count=1)
-        return validate_model(refined)  # type: ignore[return-value]
+        # A critical shock is a hard floor. The model may rewrite notes, not the stance.
+        return _overlay_shocks(validate_model(refined), heuristic)  # type: ignore[return-value]
 
     def _build_heuristic(self, ctx: AgentContext) -> MacroView:
         facts = self._facts
@@ -184,6 +194,22 @@ class MacroAgent:
                 evidence_refs=["ev-macro-policy"],
             )
 
+        shock_payload = _tool_call(
+            self._tools,
+            "get_market_shocks",
+            {"lookback_hours": 36, "limit": 300},
+            ctx,
+        )
+        shocks = assess_market_shocks(
+            items_from_payload(shock_payload if isinstance(shock_payload, dict) else None),
+            as_of=ctx.as_of,
+        )
+        drivers = [
+            f"指数日收益 {ret:+.2%}",
+            f"涨跌家数差 {breadth}",
+        ]
+        regime, confidence, drivers = regime_after_shocks(regime, confidence, drivers, shocks)
+
         ev = [
             evidence(
                 "ev-macro-index",
@@ -207,6 +233,17 @@ class MacroAgent:
                     kind="news",
                     ref_id=f"policy:{ctx.as_of.isoformat()}",
                     excerpt=f"policy-related items={policy_n}",
+                    as_of=ctx.as_of,
+                )
+            )
+        external_spec = external_from_shocks(shocks)
+        if external_spec is not None:
+            ev.append(
+                evidence(
+                    "ev-macro-shock",
+                    kind="news",
+                    ref_id=f"shock:{ctx.as_of.isoformat()}",
+                    excerpt=external_spec[2][:400],
                     as_of=ctx.as_of,
                 )
             )
@@ -242,25 +279,60 @@ class MacroAgent:
         else:
             growth_note = "增长维度数据不足"
 
+        if external_spec is None:
+            external = _dim("unclear", 0.0, "外部环境数据不足")
+        else:
+            direction, score, note = external_spec
+            external = DimensionView(
+                direction=direction,  # type: ignore[arg-type]
+                score=score,
+                note=note[:200],
+                evidence_refs=["ev-macro-shock"],
+            )
+
         view = MacroView(
             as_of=ctx.as_of,
             regime=regime,
             regime_confidence=confidence,
-            regime_drivers=[
-                f"指数日收益 {ret:+.2%}",
-                f"涨跌家数差 {breadth}",
-            ],
+            regime_drivers=drivers,
             liquidity=_dim("stable", 0.0, "流动性：北向/资金流表未迁移，标为稳定"),
             growth=_dim("unclear", 0.0, growth_note),
             inflation=_dim("unclear", 0.0, "通胀维度依赖宏观序列（未迁移）"),
             policy=policy_dim,
-            external=_dim("unclear", 0.0, "外部环境数据不足"),
+            external=external,
             sector_impacts=impacts,
             upcoming_events=[],
             evidence=ev,
         )
         require_evidence(view.evidence, min_count=1)
         return validate_model(view)  # type: ignore[return-value]
+
+
+def _overlay_shocks(refined: MacroView, heuristic: MacroView) -> MacroView:
+    """Keep a shock-driven regime if the heuristic already set one."""
+    shock_drivers = [d for d in heuristic.regime_drivers if d.startswith("市场冲击[")]
+    if not shock_drivers:
+        return refined
+    drivers = [d for d in refined.regime_drivers if not d.startswith("市场冲击[")]
+    kept = [e for e in refined.evidence if e.evidence_id != "ev-macro-shock"]
+    shock_ev = [e for e in heuristic.evidence if e.evidence_id == "ev-macro-shock"]
+    regime = refined.regime
+    confidence = refined.regime_confidence
+    if heuristic.external.score <= -0.6:
+        regime = "risk_off"
+        confidence = max(confidence, heuristic.regime_confidence)
+    elif regime == "risk_on" and heuristic.regime != "risk_on":
+        regime = heuristic.regime
+        confidence = min(confidence, heuristic.regime_confidence)
+    return refined.model_copy(
+        update={
+            "regime": regime,
+            "regime_confidence": confidence,
+            "regime_drivers": [*shock_drivers, *drivers][:6],
+            "external": heuristic.external,
+            "evidence": [*kept, *shock_ev],
+        }
+    )
 
 
 def neutral_macro_view(ctx: AgentContext, *, reason: str) -> MacroView:

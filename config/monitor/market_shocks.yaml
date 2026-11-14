@@ -1,0 +1,52 @@
+# Market-wide shocks for D-class L1 (zero LLM).
+# Longest keyword wins. ignore_if skips that keyword when any phrase is present,
+# so company filings and metaphors do not page as geopolitics.
+# A hit does not need a holding name. Cooldown is per keyword, symbol MACRO.
+
+rules:
+  - { keyword: "军事冲突", severity: critical }
+  - { keyword: "军事打击", severity: critical }
+  - { keyword: "军事动员", severity: critical }
+  - { keyword: "导弹袭击", severity: critical }
+  - { keyword: "武装冲突", severity: critical }
+  - { keyword: "地缘冲突", severity: critical }
+  - { keyword: "海峡封锁", severity: critical }
+  - { keyword: "石油禁运", severity: critical }
+  - { keyword: "能源禁运", severity: critical }
+  - { keyword: "核试验", severity: critical }
+  - { keyword: "宣战", severity: critical }
+  - { keyword: "开战", severity: critical }
+  - { keyword: "空袭", severity: critical }
+  - { keyword: "政变", severity: critical }
+  - { keyword: "戒严", severity: critical }
+  - { keyword: "断交", severity: critical }
+  - keyword: "战争"
+    severity: critical
+    ignore_if: ["贸易战", "价格战", "商战", "关税战", "货币战", "口水战", "舆论战", "抗日", "解放战争", "纪念"]
+
+  - { keyword: "总统选举", severity: high, direction: unclear }
+  - { keyword: "议会选举", severity: high, direction: unclear }
+  - { keyword: "国会选举", severity: high, direction: unclear }
+  - { keyword: "总统大选", severity: high, direction: unclear }
+  - { keyword: "紧急降息", severity: high }
+  - { keyword: "紧急加息", severity: high }
+  - { keyword: "加征关税", severity: high }
+  - { keyword: "政府停摆", severity: high }
+  - { keyword: "主权违约", severity: high }
+  - { keyword: "债务上限", severity: high }
+  - { keyword: "贸易战", severity: high }
+  - { keyword: "关税战", severity: high }
+  - { keyword: "大选", severity: high, direction: unclear }
+  - { keyword: "弹劾", severity: high }
+  - { keyword: "公投", severity: high, direction: unclear }
+  - { keyword: "制裁", severity: high }
+  - keyword: "选举"
+    severity: high
+    direction: unclear
+    ignore_if: ["董事会", "股东", "董事", "监事", "高管", "换届", "职工", "工会"]
+
+  - { keyword: "地缘政治", severity: medium }
+  - { keyword: "军事演习", severity: medium }
+  - { keyword: "停火", severity: medium, direction: positive }
+  - { keyword: "和谈", severity: medium, direction: positive }
+  - { keyword: "竞选", severity: medium, direction: unclear }

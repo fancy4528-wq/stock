@@ -42,6 +42,7 @@ class NewsFeedItem:
 class NewsL1Stats:
     scanned: int = 0
     passed: int = 0
+    market_passed: int = 0
     drop_no_relevance: int = 0
     drop_low_severity: int = 0
 
@@ -85,6 +86,7 @@ def evaluate_news_triggers(
     drop_rel = 0
     drop_sev = 0
     passed = 0
+    market_passed = 0
 
     for item in items:
         result = filter_.check_news(
@@ -100,6 +102,8 @@ def evaluate_news_triggers(
                 drop_sev += 1
             continue
         passed += 1
+        if result.match_kind == "market":
+            market_passed += 1
         hits.append(
             _hit_from_pass(item, result, names=names, conf=conf, cool=cool)
         )
@@ -107,6 +111,7 @@ def evaluate_news_triggers(
     stats = NewsL1Stats(
         scanned=len(items),
         passed=passed,
+        market_passed=market_passed,
         drop_no_relevance=drop_rel,
         drop_low_severity=drop_sev,
     )
@@ -123,20 +128,27 @@ def _hit_from_pass(
 ) -> TriggerHit:
     sev_raw = result.severity or "medium"
     sev = _to_severity(sev_raw)
-    primary = result.mentioned_symbols[0] if result.mentioned_symbols else "_unknown"
-    name = names.get(primary) or primary
     title_short = (item.title or "")[:80]
-    try:
-        message = conf.message.format(
-            name=name,
-            severity=sev,
-            title_short=title_short,
-            symbol=primary,
-        )
-    except (KeyError, ValueError):
-        message = f"{name} 相关新闻[{sev}]：{title_short}"
+    market = result.match_kind == "market"
+    if market:
+        primary = "MACRO"
+        keyword = (result.matched_keyword or "macro").strip() or "macro"
+        message = f"市场消息[{sev}]：{title_short}"
+        code = f"MACRO_{sev.upper()}/{keyword}"
+    else:
+        primary = result.mentioned_symbols[0] if result.mentioned_symbols else "_unknown"
+        name = names.get(primary) or primary
+        try:
+            message = conf.message.format(
+                name=name,
+                severity=sev,
+                title_short=title_short,
+                symbol=primary,
+            )
+        except (KeyError, ValueError):
+            message = f"{name} 相关新闻[{sev}]：{title_short}"
+        code = f"NEWS_{sev.upper()}/{_uid(item)}"
 
-    uid = _uid(item)
     cooldown = float(getattr(cool, sev, 6.0) if sev != "info" else cool.medium)
     evidence: dict[str, Any] = {
         "title": item.title,
@@ -147,14 +159,15 @@ def _hit_from_pass(
         "content_hash": item.content_hash,
         "mentioned_symbols": list(result.mentioned_symbols),
         "match_kind": result.match_kind,
+        "matched_keyword": result.matched_keyword,
         "l1_severity": sev_raw,
         "published_at": (item.published_at.isoformat() if item.published_at else None),
     }
     return TriggerHit(
-        code=f"NEWS_{sev.upper()}/{uid}",
+        code=code,
         severity=sev,
         symbol=primary,
-        title=f"NEWS_{sev.upper()}",
+        title=(f"MACRO_{sev.upper()}" if market else f"NEWS_{sev.upper()}"),
         message=message,
         analysis_level="L1",
         cost_usd=0.0,

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from quantagent.shared.errors import ConfigError
 
-MatchKind = Literal["entity", "industry"]
+MatchKind = Literal["entity", "industry", "market"]
 
 
 class EntityAliasConfig(BaseModel):

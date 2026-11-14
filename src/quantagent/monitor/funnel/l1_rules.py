@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from quantagent.monitor.funnel.entity_matcher import EntityAliasConfig, EntityMatcher, MatchKind
 from quantagent.monitor.funnel.keywords import KeywordConfig, KeywordSeverity, keyword_severity
+from quantagent.monitor.funnel.market_shocks import MarketShockConfig, match_market_shock
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class L1Result(BaseModel):
     mentioned_symbols: list[str] = Field(default_factory=list)
     severity: KeywordSeverity | None = None
     match_kind: MatchKind | None = None
+    matched_keyword: str | None = None
 
     @classmethod
     def drop(cls, reason: str) -> L1Result:
@@ -41,6 +43,7 @@ class L1Result(BaseModel):
         severity: KeywordSeverity,
         *,
         match_kind: MatchKind,
+        matched_keyword: str | None = None,
     ) -> L1Result:
         return cls(
             passed=True,
@@ -48,6 +51,7 @@ class L1Result(BaseModel):
             mentioned_symbols=list(mentioned),
             severity=severity,
             match_kind=match_kind,
+            matched_keyword=matched_keyword,
         )
 
 
@@ -62,9 +66,11 @@ class L1Filter:
         *,
         entity_cfg: EntityAliasConfig | None = None,
         keyword_cfg: KeywordConfig | None = None,
+        market_cfg: MarketShockConfig | None = None,
     ) -> None:
         self._entities = EntityMatcher(entity_cfg)
         self._keywords = keyword_cfg
+        self._market = market_cfg
 
     def check_news(
         self,
@@ -74,6 +80,15 @@ class L1Filter:
         name_by_symbol: dict[str, str] | None = None,
         industry_by_symbol: dict[str, str] | None = None,
     ) -> L1Result:
+        shock = match_market_shock(news.title or "", cfg=self._market)
+        if shock is not None:
+            return L1Result.pass_to_l2(
+                [],
+                shock.severity,
+                match_kind="market",
+                matched_keyword=shock.keyword,
+            )
+
         text = _relevance_text(news)
         mentioned, kind = self._entities.match(
             text,

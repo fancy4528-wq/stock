@@ -331,9 +331,16 @@ async def run_monitor_once(
         news_l1_passed = news_stats.passed
         notes.append(
             f"news L1 scanned={news_stats.scanned} passed={news_stats.passed} "
+            f"market={news_stats.market_passed} "
             f"pass_rate={news_stats.pass_rate:.1%} "
             f"drop_rel={news_stats.drop_no_relevance} drop_sev={news_stats.drop_low_severity}"
         )
+        market_hits = [
+            h for h in news_hits if (h.evidence or {}).get("match_kind") == "market"
+        ]
+        news_hits = [
+            h for h in news_hits if (h.evidence or {}).get("match_kind") != "market"
+        ]
         if run_l2 and news_hits:
             if not mb.allow_l2():
                 news_l2_mode = "l1_passthrough"
@@ -372,6 +379,7 @@ async def run_monitor_once(
                     f"cost_usd={l2_stats.cost_usd:.4f}"
                     + (f" note={l2_stats.note}" if l2_stats.note else "")
                 )
+        news_hits = [*market_hits, *news_hits]
 
     raw = [*price_hits, *risk_hits, *ann_hits, *news_hits]
     if run_l3 and raw:

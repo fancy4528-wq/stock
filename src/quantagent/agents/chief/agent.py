@@ -24,6 +24,19 @@ from quantagent.agents.validation import require_evidence, validate_model
 from quantagent.shared.errors import AgentError
 
 
+def _stance_rationale(macro: MacroView, equity_stance: str) -> str:
+    """Direction only. Market shocks do not change Fusion weights."""
+    shock = next((d for d in macro.regime_drivers if d.startswith("市场冲击[")), "")
+    if shock:
+        text = (
+            f"{shock}。regime={macro.regime} 对应 {equity_stance}，"
+            "方向性建议，不改变仓位。"
+        )
+    else:
+        text = f"由宏观 regime={macro.regime} 映射的方向性建议（非仓位）"
+    return text[:300]
+
+
 class ChiefAgent:
     name = "chief"
     tier = "large"
@@ -225,7 +238,7 @@ class ChiefAgent:
             stock_ranking=stock_ranking,
             allocation_stance=AllocationStance(
                 equity_stance=equity_stance,
-                rationale=f"由宏观 regime={macro.regime} 映射的方向性建议（非仓位）"[:300],
+                rationale=_stance_rationale(macro, equity_stance),
                 preferred_sectors=preferred,
                 avoid_sectors=avoid,
             ),

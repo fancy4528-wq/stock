@@ -34,6 +34,21 @@ class LiveReportError(QuantAgentError):
     """Live daily-report data path failure."""
 
 
+def shock_notes_for_day(repo: PITRepository, as_of: date) -> list[RiskNote]:
+    """Daily stance line for market shocks. Empty when the database has none."""
+    from quantagent.agents.macro.shocks import assess_market_shocks, items_from_payload
+    from quantagent.agents.tools.research_db import get_market_shocks
+
+    try:
+        payload = get_market_shocks(as_of=as_of, limit=300, repo=repo)
+    except Exception:  # noqa: BLE001 — report still renders if news is down
+        return []
+    assessment = assess_market_shocks(items_from_payload(payload), as_of=as_of)
+    if not assessment.stance_line:
+        return []
+    return [RiskNote(text=assessment.stance_line)]
+
+
 def _load_events_safe(*, as_of: date, symbols: list[str]) -> list[Any]:
     try:
         return load_events_for_as_of(as_of, universe_symbols=symbols, limit=12)
@@ -575,7 +590,7 @@ def load_live_report_data(
         factor_ranks=ranks,
         factor_rank_name=factor_name,
         shadow=[],
-        risk_notes=[],
+        risk_notes=shock_notes_for_day(repo, as_of),
         quality=quality,
         data_sources=[
             f"行情：PITRepository.get_prices（universe={universe_code}）",
@@ -608,9 +623,14 @@ def finalize_live_bundle(
     risk_notes: list[RiskNote],
 ) -> ReportBundle:
     base = data.bundle_partial
+    shock = [n for n in base.risk_notes if n.text.startswith("市场冲击")]
+    rest = [n for n in risk_notes if not n.text.startswith("市场冲击")]
+    merged = shock + rest
+    if not merged:
+        merged = [RiskNote(text="当前回撤在阈值内（阈值 -15%）")]
     return base.model_copy(
         update={
             "shadow": shadow_rows,
-            "risk_notes": risk_notes or [RiskNote(text="当前回撤在阈值内（阈值 -15%）")],
+            "risk_notes": merged,
         }
     )

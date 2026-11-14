@@ -239,6 +239,63 @@ def get_announcements(
     }
 
 
+def get_market_shocks(
+    *,
+    as_of: date | None = None,
+    lookback_hours: int = 36,
+    limit: int = 80,
+    repo: PITRepository | None = None,
+) -> dict[str, Any]:
+    """Recent flash headlines and macro events for the regime layer.
+
+    The caller applies keyword cooldown. This fetch only bounds the read.
+    """
+    day = require_as_of(as_of)
+    start = day - timedelta(days=2)
+    r = _repo(repo)
+    news = r.get_news(
+        as_of=day,
+        start=start,
+        limit=min(max(int(limit), 1), 300),
+        sources=["cls", "em"],
+    )
+    events = r.get_events(
+        as_of=day,
+        start=start,
+        limit=min(limit, MAX_EVENT_ROWS),
+        event_types=["macro"],
+    )
+    items: list[dict[str, Any]] = []
+    for row in news:
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        items.append(
+            {
+                "title": title,
+                "published_at": _jsonable(row.get("published_at")),
+                "source": row.get("source"),
+            }
+        )
+    for row in events:
+        title = str(row.get("summary") or "").strip()
+        if not title:
+            continue
+        items.append(
+            {
+                "title": title,
+                "published_at": _jsonable(row.get("visible_at")),
+                "source": "event",
+            }
+        )
+    return {
+        "available": True,
+        "as_of": day.isoformat(),
+        "lookback_hours": int(lookback_hours),
+        "items": items[:limit],
+    }
+
+
 def get_policy_news(
     *,
     as_of: date | None = None,
@@ -578,6 +635,7 @@ DB_TOOL_NAMES: tuple[str, ...] = (
     "get_valuation",
     "get_stock_news",
     "get_announcements",
+    "get_market_shocks",
     "get_policy_news",
     "get_stock_events",
     "get_sector_constituents",
@@ -608,6 +666,7 @@ def register_db_tools(
         "get_valuation": get_valuation,
         "get_stock_news": get_stock_news,
         "get_announcements": get_announcements,
+        "get_market_shocks": get_market_shocks,
         "get_policy_news": get_policy_news,
         "get_stock_events": get_stock_events,
         "get_sector_constituents": get_sector_constituents,

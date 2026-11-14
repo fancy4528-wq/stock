@@ -48,6 +48,19 @@ def test_rule_extractor_hint_symbol_without_ticker_in_text() -> None:
     assert out.primary_symbols[0] == "600519.SH"
 
 
+def test_rule_extractor_market_shock_is_macro() -> None:
+    ext = RuleNewsExtractor()
+    war = ext.extract(title="中东军事冲突升级", body="原油跳涨。")
+    assert war.event_type == "macro"
+    assert war.is_relevant
+    election = ext.extract(title="美国总统选举进入计票")
+    assert election.event_type == "macro"
+    board = ext.extract(title="贵州茅台董事会换届选举")
+    assert board.event_type != "macro"
+    price_war = ext.extract(title="行业价格战加剧")
+    assert price_war.event_type != "macro"
+
+
 def test_figures_gold_soft_rate() -> None:
     score = score_figures_gold(GOLD)
     assert score.n >= 100
