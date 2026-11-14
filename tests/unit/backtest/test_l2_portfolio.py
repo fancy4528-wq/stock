@@ -67,6 +67,7 @@ async def test_future_bars_do_not_change_history() -> None:
         top_n=1,
         initial_cash=1_000_000,
         rebalance="daily",
+        max_turnover=1.0,
     )
     engine = L2TopNBacktest()
     baseline = await engine.run(cfg, bars=_panel(window, {k: v[:6] for k, v in prices.items()}), scores=scores)
@@ -96,7 +97,13 @@ async def test_limit_up_buy_is_rejected() -> None:
     ]
     scores = {days[0]: {"AAA": 1.0, "BBB": 0.0}, days[1]: {"BBB": 1.0}, days[2]: {}}
     result = await L2TopNBacktest().run(
-        L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="daily"),
+        L2TopNConfig(
+            start=days[0],
+            end=days[-1],
+            top_n=1,
+            rebalance="daily",
+            max_turnover=1.0,
+        ),
         bars=bars,
         scores=scores,
     )
@@ -127,7 +134,13 @@ async def test_weekly_rebalance_trades_only_on_week_boundary() -> None:
     scores[days[9]] = {"AAA": 0.0, "BBB": 1.0}
 
     result = await L2TopNBacktest().run(
-        L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="weekly"),
+        L2TopNConfig(
+            start=days[0],
+            end=days[-1],
+            top_n=1,
+            rebalance="weekly",
+            max_turnover=1.0,
+        ),
         bars=bars,
         scores=scores,
     )
@@ -139,6 +152,31 @@ async def test_weekly_rebalance_trades_only_on_week_boundary() -> None:
 
 
 @pytest.mark.asyncio
+async def test_turnover_cap_blocks_full_rotation_in_one_rebalance() -> None:
+    """With max_turnover=0.25, a full AAA→BBB swap cannot finish in one fill."""
+    days = _days(3)
+    bars = _panel(days, {"AAA": [10, 10, 10], "BBB": [10, 10, 10]})
+    scores = {
+        days[0]: {"AAA": 1.0, "BBB": 0.0},
+        days[1]: {"AAA": 0.0, "BBB": 1.0},
+        days[2]: {"AAA": 0.0, "BBB": 1.0},
+    }
+    result = await L2TopNBacktest().run(
+        L2TopNConfig(
+            start=days[0],
+            end=days[-1],
+            top_n=1,
+            rebalance="daily",
+            max_turnover=0.25,
+        ),
+        bars=bars,
+        scores=scores,
+    )
+    assert "AAA" in result.positions
+    assert "max_turnover=0.25" in result.notes
+
+
+@pytest.mark.asyncio
 async def test_holdout_end_is_refused_without_consuming_the_use(tmp_path) -> None:
     days = _days(4, start=date(2024, 1, 2))
     guard = HoldoutGuard(days[-1], tmp_path / "uses.jsonl")
@@ -147,13 +185,25 @@ async def test_holdout_end_is_refused_without_consuming_the_use(tmp_path) -> Non
     engine = L2TopNBacktest(guard=guard)
     with pytest.raises(HoldoutViolation, match="check_access"):
         await engine.run(
-            L2TopNConfig(start=days[0], end=days[-1], top_n=1, rebalance="daily"),
+            L2TopNConfig(
+                start=days[0],
+                end=days[-1],
+                top_n=1,
+                rebalance="daily",
+                max_turnover=1.0,
+            ),
             bars=bars,
             scores=scores,
         )
     assert guard.uses() == []
     allowed = await engine.run(
-        L2TopNConfig(start=days[0], end=days[-2], top_n=1, rebalance="daily"),
+        L2TopNConfig(
+            start=days[0],
+            end=days[-2],
+            top_n=1,
+            rebalance="daily",
+            max_turnover=1.0,
+        ),
         bars=bars,
         scores=scores,
     )
