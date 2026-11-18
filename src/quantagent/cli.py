@@ -1888,6 +1888,90 @@ def _synthetic_l2_topn_panel() -> tuple[list[object], dict[date, dict[str, float
     return bars, scores, days[0], days[-1]
 
 
+def _portfolio_attribution(
+    port: object,
+    *,
+    bars: list[object] | None,
+    control_suite: object | None,
+    from_db: bool,
+    benchmark_symbol: str = "000300.SH",
+) -> object | None:
+    """Build docs/08 §7 attribution for a portfolio backtest report (best-effort)."""
+    from quantagent.evaluation.attribution import attribute_portfolio
+
+    signal_returns: dict[str, float] = {}
+    baseline_return: float | None = None
+    if control_suite is not None:
+        baseline_return = float(control_suite.buy_and_hold)  # type: ignore[attr-defined]
+        signal_returns = {
+            "equal_weight_pool": float(control_suite.equal_weight_pool),  # type: ignore[attr-defined]
+            f"best_single:{control_suite.best_single_factor_code}": (  # type: ignore[attr-defined]
+                float(control_suite.best_single_factor)  # type: ignore[attr-defined]
+            ),
+            "l2_equal": float(control_suite.l2_equal),  # type: ignore[attr-defined]
+        }
+
+    bench_dates = None
+    bench_equity = None
+    industry_map: dict[str, str] = {}
+    if from_db:
+        try:
+            from quantagent.backtest import BuyAndHoldConfig, BuyAndHoldEngine
+
+            bh = BuyAndHoldEngine().run(
+                BuyAndHoldConfig(
+                    symbol=benchmark_symbol,
+                    start=port.start,  # type: ignore[attr-defined]
+                    end=port.end,  # type: ignore[attr-defined]
+                    apply_constraints=False,
+                )
+            )
+            bench_dates = bh.dates
+            bench_equity = bh.equity_curve
+            if baseline_return is None:
+                baseline_return = float(bh.metrics.total_return)
+        except Exception as exc:  # noqa: BLE001 — report still useful without BH
+            print(f"attribution: benchmark load failed ({exc})", flush=True)
+
+        symbols: set[str] = set()
+        for w in getattr(port, "weights_history", []) or []:
+            symbols.update(w)
+        if symbols:
+            try:
+                from quantagent.core.repository.pit import PITRepository
+
+                pit = PITRepository()
+                df = pit.get_industry(sorted(symbols), as_of=port.end)  # type: ignore[attr-defined]
+                if not df.is_empty() and "symbol" in df.columns:
+                    code_col = (
+                        "industry_code"
+                        if "industry_code" in df.columns
+                        else ("industry_name" if "industry_name" in df.columns else None)
+                    )
+                    if code_col is not None:
+                        industry_map = {
+                            str(r["symbol"]): str(r[code_col])
+                            for r in df.to_dicts()
+                            if r.get("symbol") is not None and r.get(code_col) is not None
+                        }
+            except Exception as exc:  # noqa: BLE001
+                print(f"attribution: industry map skipped ({exc})", flush=True)
+
+    try:
+        return attribute_portfolio(
+            port,  # type: ignore[arg-type]
+            bars=bars,  # type: ignore[arg-type]
+            benchmark_dates=bench_dates,
+            benchmark_equity=bench_equity,
+            industry_map=industry_map or None,
+            signal_returns=signal_returns or None,
+            baseline_return=baseline_return,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"attribution: skipped ({exc})", flush=True)
+        return None
+
+
 def _run_backtest(
     *,
     strategy: str,
@@ -1971,7 +2055,7 @@ def _run_backtest(
             )
             guard = load_holdout_guard("CN")
 
-            async def _run_l2_and_controls() -> tuple[object, dict[str, str] | None]:
+            async def _run_l2_and_controls() -> tuple[object, dict[str, str] | None, object | None]:
                 port_inner = await L2TopNBacktest(guard=guard).run(
                     cfg, bars=panel.bars, scores=panel.scores
                 )
@@ -1979,10 +2063,11 @@ def _run_backtest(
                     update={"notes": [*port_inner.notes, *panel.notes]}
                 )
                 ctrl_map: dict[str, str] | None = None
+                suite_inner: object | None = None
                 if with_controls:
                     from quantagent.backtest.controls import run_control_suite
 
-                    suite = await run_control_suite(
+                    suite_inner = await run_control_suite(
                         panel,
                         strategy_return=float(port_inner.total_return),
                         top_n=top_n,
@@ -1991,21 +2076,22 @@ def _run_backtest(
                         guard=guard,
                     )
                     port_inner = port_inner.model_copy(
-                        update={"notes": [*port_inner.notes, *suite.notes]}
+                        update={"notes": [*port_inner.notes, *suite_inner.notes]}
                     )
-                    ctrl_map = suite.as_report_controls()
+                    ctrl_map = suite_inner.as_report_controls()
                     print(
                         "controls: "
-                        f"BH={suite.buy_and_hold:+.2%} "
-                        f"pool={suite.equal_weight_pool:+.2%} "
-                        f"single={suite.best_single_factor:+.2%} "
-                        f"p95={suite.random_p95:+.2%} "
-                        f"beats_p95={suite.beats_random_p95}",
+                        f"BH={suite_inner.buy_and_hold:+.2%} "
+                        f"pool={suite_inner.equal_weight_pool:+.2%} "
+                        f"single={suite_inner.best_single_factor:+.2%} "
+                        f"p95={suite_inner.random_p95:+.2%} "
+                        f"beats_p95={suite_inner.beats_random_p95}",
                         flush=True,
                     )
-                return port_inner, ctrl_map
+                return port_inner, ctrl_map, suite_inner
 
-            port, control_map = asyncio.run(_run_l2_and_controls())
+            port, control_map, control_suite = asyncio.run(_run_l2_and_controls())
+            portfolio_bars = panel.bars
             out = write_report or Path(
                 f"docs/backtest-reports/l2_equal_topn-{universe}-5y.md"
             )
@@ -2023,6 +2109,8 @@ def _run_backtest(
                 L2TopNBacktest().run(cfg, bars=bars, scores=scores)  # type: ignore[arg-type]
             )
             control_map = None
+            control_suite = None
+            portfolio_bars = bars
             out = write_report or Path(
                 "docs/backtest-reports/l2_equal_topn-synthetic.md"
             )
@@ -2040,12 +2128,20 @@ def _run_backtest(
             f"  n_unfilled={port.n_unfilled} reject_stats={port.reject_stats}\n"
             f"  matching=unverified (撮合假设未验证)"
         )
+        attribution = _portfolio_attribution(
+            port,
+            bars=portfolio_bars,  # type: ignore[arg-type]
+            control_suite=control_suite,
+            from_db=from_db,
+            benchmark_symbol=symbol or "000300.SH",
+        )
         write_portfolio_backtest_report(
             port,
             out,
             matching=MatchingAssumptionStatus(),
             bias=BiasCheckInputs(code_version="dev", param_search_count=0),
             controls=control_map,
+            attribution=attribution,
         )
         print(f"wrote {out}")
         if out.parent.name == "backtest-reports":
