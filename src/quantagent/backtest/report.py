@@ -13,6 +13,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from quantagent.backtest.portfolio import PortfolioBacktestResult
+from quantagent.evaluation.attribution.report import render_attribution_section
+from quantagent.evaluation.attribution.types import AttributionResult
 
 MatchingStatus = Literal["unverified", "calibrated"]
 
@@ -86,6 +88,7 @@ def render_portfolio_backtest_report(
     matching: MatchingAssumptionStatus | None = None,
     bias: BiasCheckInputs | None = None,
     controls: dict[str, str] | None = None,
+    attribution: AttributionResult | None = None,
 ) -> str:
     """Render Gate 4 §9.2 portfolio backtest markdown."""
     matching = matching or MatchingAssumptionStatus()
@@ -221,13 +224,14 @@ def render_portfolio_backtest_report(
 | 未覆盖场景 | {uncovered} |
 | 声明 | **{matching.disclaimer}** |
 
-## Notes
+{render_attribution_section(attribution) if attribution is not None else ""}## Notes
 
 {notes}
 
 ---
 *Template: docs/08-backtest-eval.md §9.2. Section 7 is mandatory;*
 *uncalibrated conclusions must keep 「撮合假设未验证」.*
+*Section 8 (归因) is optional until weights + benchmark are available.*
 """
 
 
@@ -238,12 +242,19 @@ def write_portfolio_backtest_report(
     matching: MatchingAssumptionStatus | None = None,
     bias: BiasCheckInputs | None = None,
     controls: dict[str, str] | None = None,
+    attribution: AttributionResult | None = None,
 ) -> Path:
     """Write markdown report; create parent dirs as needed."""
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
-        render_portfolio_backtest_report(result, matching=matching, bias=bias, controls=controls),
+        render_portfolio_backtest_report(
+            result,
+            matching=matching,
+            bias=bias,
+            controls=controls,
+            attribution=attribution,
+        ),
         encoding="utf-8",
     )
     return out

@@ -67,6 +67,10 @@ class PortfolioBacktestResult(BaseModel):
     capacity_estimate: float | None = None
     rebalance: RebalanceFreq = "weekly"
     n_rebalances: int = 0
+    # End-of-day snapshots for docs/08 §7 attribution (aligned with ``dates``).
+    weights_history: list[dict[str, float]] = Field(default_factory=list)
+    cash_weights: list[float] = Field(default_factory=list)
+    daily_fees: list[float] = Field(default_factory=list)
 
 
 class L2TopNBacktest:
@@ -114,6 +118,9 @@ class L2TopNBacktest:
 
         broker = SimulatedBroker(self.market, cash=cfg.initial_cash)
         equity: list[float] = []
+        weights_history: list[dict[str, float]] = []
+        cash_weights: list[float] = []
+        daily_fees: list[float] = []
         total_fees = 0.0
         traded_notional = 0.0
         volume_shares: list[float] = []
@@ -123,6 +130,7 @@ class L2TopNBacktest:
             session_bars = by_date[session]
             broker.set_bars(session_bars, trade_date=session)
             broker.roll_day()
+            day_fee = 0.0
             prev = sessions[i - 1] if i > 0 else None
             if pending and _is_fill_session(session, prev, cfg.rebalance):
                 acks = await rebalance_equal_weight(
@@ -133,13 +141,25 @@ class L2TopNBacktest:
                     run_id=cfg.strategy,
                     max_turnover=cfg.max_turnover,
                 )
-                total_fees += sum(ack.fees for ack in acks)
+                day_fee = sum(ack.fees for ack in acks)
+                total_fees += day_fee
                 notion, shares = _fill_participation(broker, acks, session_bars)
                 traded_notional += notion
                 volume_shares.extend(shares)
                 n_rebalances += 1
                 pending = None
-            equity.append(broker.mark_to_market())
+            nav = broker.mark_to_market()
+            equity.append(nav)
+            pos_mv = sum(p.market_value for p in broker._positions.values())
+            cash_w = ((nav - pos_mv) / nav) if nav > 1e-12 else 1.0
+            wmap: dict[str, float] = {}
+            if nav > 1e-12:
+                for sym, pos in broker._positions.items():
+                    if pos.market_value > 0:
+                        wmap[sym] = pos.market_value / nav
+            weights_history.append(wmap)
+            cash_weights.append(cash_w)
+            daily_fees.append(day_fee)
             nxt = sessions[i + 1] if i + 1 < len(sessions) else None
             if _is_signal_session(session, nxt, cfg.rebalance):
                 picks = _top_n(scores.get(session, {}), cfg.top_n)
@@ -202,6 +222,9 @@ class L2TopNBacktest:
             capacity_estimate=capacity,
             rebalance=cfg.rebalance,
             n_rebalances=n_rebalances,
+            weights_history=weights_history,
+            cash_weights=cash_weights,
+            daily_fees=daily_fees,
         )
 
 

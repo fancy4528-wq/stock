@@ -160,11 +160,16 @@
 - `monthly-review` §5 自动读该日记，并与 Agent 打分的 5 日方向命中率分桶；无行情或标签未齐时只列条件天数、命中率留空。不改 Fusion 权重
 - Postgres `decision_journal` 仍未迁；本 JSONL 为观察期落盘，供分条件准确率攒样本
 
+**回测归因（2026-11-18）**:
+- 新增 `evaluation/attribution/`：`decompose_returns`（市场 β×基准 / 板块 Brinson-Fachler / 个股选择 / 择时 / 成本 + residual 轧平）与 `attribute_by_signal`（单信号组合 vs baseline/fused，描述性不加算）
+- `L2TopNBacktest` 按日落盘 `weights_history` / `cash_weights` / `daily_fees`；组合报告新增 §8；`quantagent backtest` 在有基准/对照时自动写入
+- Shadow 日记可经 `signal_returns_from_shadows` 喂信号贡献；无行业映射时板块为 0、个股相对等权篮子。不改 Fusion 权重
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
 - 等前向打分日志攒够 5d/20d 标签后再读 IC；样本不足前不降权
 - 信号相关同样等 live 截面满 20 天后再决定是否合并；之前不改 equal-v1
-- 回测归因（收益分解 / 信号贡献）；考虑把 Gate 4 主报告默认改为月频；撮合校准仍属 Gate 7b
+- 考虑把 Gate 4 主报告默认改为月频；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
