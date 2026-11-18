@@ -19,6 +19,20 @@ from quantagent.evaluation.attribution.types import AttributionResult
 MatchingStatus = Literal["unverified", "calibrated"]
 
 
+def default_l2_report_path(universe: str, freq: str) -> Path:
+    """Gate 4 primary report is monthly; other cadences keep an explicit suffix.
+
+    Legacy ``l2_equal_topn-*-5y.md`` (unlimited weekly) is left untouched as a
+    historical contrast; do not overwrite it from the default path.
+    """
+    if freq == "monthly":
+        return Path(f"docs/backtest-reports/l2_equal_topn-{universe}-5y-monthly.md")
+    if freq == "weekly":
+        return Path(f"docs/backtest-reports/l2_equal_topn-{universe}-5y-weekly-to30.md")
+    return Path(f"docs/backtest-reports/l2_equal_topn-{universe}-5y-{freq}.md")
+
+
+
 class MatchingAssumptionStatus(BaseModel):
     """§9.2 section [7] — never omit from a Gate 4 report."""
 

@@ -262,8 +262,8 @@ exposure:
   min_cash: 0.10
 
 rebalance:
-  frequency: "weekly"            # daily | weekly | monthly
-  day_of_week: 1                 # 周一
+  frequency: "monthly"           # Gate 4 主报告默认；weekly 作对照；daily 仅冒烟
+  day_of_week: 1                 # 周频对照时：周一
   drift_threshold: 0.05          # 偏离超 5% 触发临时再平衡
   max_turnover_per_rebalance: 0.30
 ```

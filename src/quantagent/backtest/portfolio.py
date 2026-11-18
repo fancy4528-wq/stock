@@ -2,8 +2,8 @@
 
 Signal at the close of day T. Orders go out on the next session and fill at
 that session's open, through the same ``rebalance_equal_weight`` shadow uses.
-Default cadence is weekly (docs/08 §2.5); daily is available for smoke tests.
-Bars and scores after ``end`` are ignored.
+Default cadence is monthly (Gate 4 primary; docs/08 §2.5 still allows weekly);
+daily is for smoke tests. Bars and scores after ``end`` are ignored.
 """
 
 from __future__ import annotations
@@ -30,9 +30,10 @@ class L2TopNConfig(BaseModel):
     initial_cash: float = 1_000_000.0
     strategy: str = "l2_equal_topn"
     risk_free: float = 0.02
-    # docs/08 §2.5: weekly (Mon open) or monthly; daily turnover is too high.
-    rebalance: RebalanceFreq = "weekly"
-    # One-way cap; None → config/portfolio max_turnover_per_rebalance.
+    # Gate 4 primary = monthly; weekly still allowed (docs/08 §2.5).
+    # Daily turnover is too high except for smoke tests.
+    rebalance: RebalanceFreq = "monthly"
+    # One-way cap; None → config/portfolio max_turnover_per_rebalance (0.30).
     max_turnover: float | None = None
 
 
@@ -65,7 +66,7 @@ class PortfolioBacktestResult(BaseModel):
     turnover_annual: float | None = None
     avg_volume_share: float | None = None
     capacity_estimate: float | None = None
-    rebalance: RebalanceFreq = "weekly"
+    rebalance: RebalanceFreq = "monthly"
     n_rebalances: int = 0
     # End-of-day snapshots for docs/08 §7 attribution (aligned with ``dates``).
     weights_history: list[dict[str, float]] = Field(default_factory=list)
