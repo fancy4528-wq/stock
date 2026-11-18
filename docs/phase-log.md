@@ -154,11 +154,17 @@
   - **周频+换手上限** `docs/backtest-reports/l2_equal_topn-csi300-5y-weekly-to30.md`：总收益 −8.6%，费用仍高（年换手 ~12.3×）——月频为当前更优工作点
   - 旧无上限周频报告仍保留于 `l2_equal_topn-csi300-5y.md`（−5.4% / 成本占比 185%）作对照
 
+**决策条件标签（2026-11-18）**:
+- 日报流水线按日追加 `data/shadow/decision_context.jsonl`（`market_regime` / 波动率桶 / `market_shock`·`high_news` 事件；按 `as_of` 幂等）
+- 波动率桶用 `|index_return_1d|`（与 MacroAgent 1.5% 阈值对齐）；冲击标记来自 brief `regime_note` 中的 `市场冲击[…]`
+- `monthly-review` §5 自动读该日记，并与 Agent 打分的 5 日方向命中率分桶；无行情或标签未齐时只列条件天数、命中率留空。不改 Fusion 权重
+- Postgres `decision_journal` 仍未迁；本 JSONL 为观察期落盘，供分条件准确率攒样本
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
 - 等前向打分日志攒够 5d/20d 标签后再读 IC；样本不足前不降权
 - 信号相关同样等 live 截面满 20 天后再决定是否合并；之前不改 equal-v1
-- 考虑把 Gate 4 主报告默认改为月频；撮合校准仍属 Gate 7b
+- 回测归因（收益分解 / 信号贡献）；考虑把 Gate 4 主报告默认改为月频；撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 
