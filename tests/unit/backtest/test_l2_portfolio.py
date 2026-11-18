@@ -113,6 +113,12 @@ async def test_limit_up_buy_is_rejected() -> None:
     assert result.rebalance == "daily"
 
 
+def test_l2_topn_config_defaults_to_monthly() -> None:
+    cfg = L2TopNConfig(start=date(2024, 1, 2), end=date(2024, 6, 28))
+    assert cfg.rebalance == "monthly"
+    assert cfg.max_turnover is None  # → portfolio config 30%
+
+
 @pytest.mark.asyncio
 async def test_weekly_rebalance_trades_only_on_week_boundary() -> None:
     """Signal Fri close → fill Mon open; mid-week score flips must not trade."""

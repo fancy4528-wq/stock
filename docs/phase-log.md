@@ -165,11 +165,16 @@
 - `L2TopNBacktest` 按日落盘 `weights_history` / `cash_weights` / `daily_fees`；组合报告新增 §8；`quantagent backtest` 在有基准/对照时自动写入
 - Shadow 日记可经 `signal_returns_from_shadows` 喂信号贡献；无行业映射时板块为 0、个股相对等权篮子。不改 Fusion 权重
 
+**Gate 4 主报告默认月频（2026-11-18）**:
+- `L2TopNConfig` / CLI `--rebalance` / control suite 默认改为 `monthly`；`max_turnover` 仍默认读组合配置 30%
+- 未指定 `--write-report` 时：月频 → `*-5y-monthly.md`（主报告）；周频 → `*-5y-weekly-to30.md`；不覆盖历史无上限周频 `*-5y.md`
+- Shadow 仍日频观察；Fusion 权重仍为 equal-v1
+
 **下一步（Gate 4）**:
 - Shadow 继续观察，满 3 个月前不能关 Gate 4
 - 等前向打分日志攒够 5d/20d 标签后再读 IC；样本不足前不降权
 - 信号相关同样等 live 截面满 20 天后再决定是否合并；之前不改 equal-v1
-- 考虑把 Gate 4 主报告默认改为月频；撮合校准仍属 Gate 7b
+- 撮合校准仍属 Gate 7b
 
 ## P2 (约 2026-09-13 ~ 2026-10-11)
 

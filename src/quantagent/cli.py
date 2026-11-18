@@ -1985,7 +1985,7 @@ def _run_backtest(
     from_db: bool = False,
     universe: str = "csi300",
     filter_membership: bool = True,
-    rebalance: str = "weekly",
+    rebalance: str = "monthly",
     with_controls: bool = False,
     mc_trials: int = 100,
 ) -> int:
@@ -2045,7 +2045,7 @@ def _run_backtest(
                 end=win_end,
                 filter_membership=filter_membership,
             )
-            freq = rebalance if rebalance in {"daily", "weekly", "monthly"} else "weekly"
+            freq = rebalance if rebalance in {"daily", "weekly", "monthly"} else "monthly"
             cfg = L2TopNConfig(
                 start=win_start,
                 end=win_end,
@@ -2092,9 +2092,9 @@ def _run_backtest(
 
             port, control_map, control_suite = asyncio.run(_run_l2_and_controls())
             portfolio_bars = panel.bars
-            out = write_report or Path(
-                f"docs/backtest-reports/l2_equal_topn-{universe}-5y.md"
-            )
+            from quantagent.backtest.report import default_l2_report_path
+
+            out = write_report or default_l2_report_path(universe, freq)
         else:
             bars, scores, syn_start, syn_end = _synthetic_l2_topn_panel()
             # top_n=1 + daily keeps cash headroom so planted limit-up reject is visible.
@@ -2618,9 +2618,9 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--top-n", type=int, default=15, help="Top-N for l2_equal_topn")
     bt.add_argument(
         "--rebalance",
-        default="weekly",
+        default="monthly",
         choices=["daily", "weekly", "monthly"],
-        help="l2_equal_topn cadence (default weekly per docs/08 §2.5)",
+        help="l2_equal_topn cadence (default monthly = Gate 4 primary)",
     )
     bt.add_argument(
         "--from-db",
@@ -3412,7 +3412,7 @@ def main(argv: list[str] | None = None) -> int:
             from_db=bool(getattr(args, "from_db", False)),
             universe=str(getattr(args, "universe", "csi300") or "csi300"),
             filter_membership=not bool(getattr(args, "no_membership_filter", False)),
-            rebalance=str(getattr(args, "rebalance", "weekly") or "weekly"),
+            rebalance=str(getattr(args, "rebalance", "monthly") or "monthly"),
             with_controls=bool(getattr(args, "with_controls", False)),
             mc_trials=int(getattr(args, "mc_trials", 100) or 100),
         )

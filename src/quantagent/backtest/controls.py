@@ -196,7 +196,7 @@ async def run_control_suite(
     *,
     strategy_return: float,
     top_n: int = 15,
-    rebalance: RebalanceFreq = "weekly",
+    rebalance: RebalanceFreq = "monthly",
     pool_n: int = DEFAULT_POOL_N,
     mc_trials: int = DEFAULT_MC_TRIALS,
     mc_seed: int = DEFAULT_MC_SEED,
