@@ -1,8 +1,8 @@
 """Assemble one monthly self-evaluation (docs/08 §8.2).
 
 The report reads journals already on disk. It does not re-score factors, replay
-an LLM, or edit Fusion weights. Regime accuracy stays empty until a decision
-journal stores those labels.
+an LLM, or edit Fusion weights. Regime accuracy uses ``decision_context.jsonl``
+when present; missing labels keep §5 empty.
 """
 
 from __future__ import annotations
@@ -12,7 +12,11 @@ from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
+from quantagent.evaluation.agent.journal import load_agent_score_days
 from quantagent.evaluation.agent.types import AgentEvalResult
+from quantagent.evaluation.decisions.accuracy import condition_accuracy
+from quantagent.evaluation.decisions.journal import load_decision_context_days
+from quantagent.evaluation.decisions.types import DecisionContextDay
 from quantagent.evaluation.review.costs import summarize_cost_log
 from quantagent.evaluation.review.factors import assess_admitted_factors
 from quantagent.evaluation.review.shadows import PORTFOLIOS, load_shadow_month
@@ -102,6 +106,8 @@ def build_monthly_review(
     agent_note: str = "",
     recent_factor_ic: dict[str, float] | None = None,
     conditions: Sequence[ConditionAccuracy] | None = None,
+    condition_note: str = "",
+    decision_contexts: Sequence[DecisionContextDay] | None = None,
 ) -> MonthlyReview:
     """Build the seven sections from journals. ``prices`` is an optional Polars frame."""
     import polars as pl
@@ -133,6 +139,29 @@ def build_monthly_review(
     note = agent_note
     if agent is None and not note:
         note = "本次没有重算 Agent IC。有效截面不足 20 天之前不降权。"
+    if conditions is not None:
+        condition_rows = list(conditions)
+        cond_note = condition_note or (
+            "条件来自调用方传入的决策结果，本报告不自行查询。"
+            if condition_rows
+            else "决策日志还没有 market_regime、波动率或事件条件标签，本节无数字。"
+        )
+    else:
+        contexts = (
+            list(decision_contexts)
+            if decision_contexts is not None
+            else load_decision_context_days(shadow_dir)
+        )
+        condition_rows, cond_note = condition_accuracy(
+            contexts,
+            load_agent_score_days(shadow_dir),
+            frame,
+            start=start,
+            end=end,
+            include_synthetic=include_synthetic_signals,
+        )
+        if condition_note:
+            cond_note = condition_note
     month_days = sum(row.n_days for row in shadows)
     return MonthlyReview(
         month=month,
@@ -144,7 +173,8 @@ def build_monthly_review(
         agent_note=note,
         factors=factors,
         factor_note=factor_note,
-        conditions=list(conditions or []),
+        conditions=condition_rows,
+        condition_note=cond_note,
         alerts=_alerts(
             signals=signals,
             agent=agent,

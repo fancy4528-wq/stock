@@ -31,6 +31,12 @@ from quantagent.evaluation.agent import (
     points_from_brief,
     points_from_score_map,
 )
+from quantagent.evaluation.decisions import (
+    DecisionContextDay,
+    append_decision_context_day,
+    context_from_research,
+    synthetic_context,
+)
 from quantagent.evaluation.shadow import ShadowConfig, ShadowEngine, scores_from_brief
 from quantagent.evaluation.shadow.quant_signals import load_l2_equal_scores
 from quantagent.evaluation.shadow.stats import summarize_unfilled
@@ -242,18 +248,21 @@ async def _live_agent_scores(
     universe_code: str,
     repo: PITRepository,
     run_research: bool,
-) -> tuple[dict[str, float], list[AgentScorePoint], list[str]]:
+    run_id: str,
+) -> tuple[dict[str, float], list[AgentScorePoint], list[str], DecisionContextDay | None]:
     """Soft-run research DAG (heuristic, no RAG) for shadow_agent scores.
 
     The score map keeps the small confidence tie-break used by shadow.
-    Points keep raw score and confidence for the IC journal.
+    Points keep raw score and confidence for the IC journal. When the brief
+    is present, day-level regime / volatility tags are returned for the
+    decision-context journal.
     """
     if not run_research:
-        return {}, [], ["shadow_agent: research skipped"]
+        return {}, [], ["shadow_agent: research skipped"], None
     try:
         from quantagent.agents.orchestrator import run_research_live
 
-        result, _facts = await run_research_live(
+        result, facts = await run_research_live(
             as_of=as_of,
             market=market,
             universe=universe_code,
@@ -270,10 +279,21 @@ async def _live_agent_scores(
             notes.append(f"shadow_agent: research aborted ({result.abort_reason})")
         if not scores:
             notes.append("shadow_agent: empty stock_ranking")
-        return scores, points, notes
+        context: DecisionContextDay | None = None
+        if result.brief is not None:
+            context = context_from_research(
+                as_of=as_of,
+                run_id=run_id,
+                brief=result.brief,
+                facts=facts,
+                origin="live",
+            )
+        else:
+            notes.append("decision_context: no brief; tags skipped")
+        return scores, points, notes, context
     except Exception as exc:  # noqa: BLE001 — soft-fail into degraded notes
         logger.warning("shadow_agent research failed: %s", exc)
-        return {}, [], [f"shadow_agent: research failed ({type(exc).__name__}: {exc})"]
+        return {}, [], [f"shadow_agent: research failed ({type(exc).__name__}: {exc})"], None
 
 
 def _record_agent_scores(
@@ -334,6 +354,24 @@ def _record_signal_scores(
         logger.info("signal scores recorded as_of=%s signals=%s", as_of, sorted(signals))
 
 
+def _record_decision_context(
+    shadow_dir: Path | str,
+    day: DecisionContextDay | None,
+) -> None:
+    """Persist day-level regime / volatility / event tags for monthly §5."""
+    if day is None:
+        return
+    wrote = append_decision_context_day(shadow_dir, day)
+    if wrote:
+        logger.info(
+            "decision context recorded as_of=%s regime=%s vol=%s events=%s",
+            day.as_of,
+            day.market_regime,
+            day.volatility,
+            day.event_tags,
+        )
+
+
 async def run_daily_pipeline(
     *,
     as_of: date | None = None,
@@ -360,11 +398,13 @@ async def run_daily_pipeline(
     notes, not hard stops.
 
     Each run appends that day's raw Agent score and confidence to
-    ``shadow_dir/agent_scores.jsonl``, and the factor / quant / stock
+    ``shadow_dir/agent_scores.jsonl``, the factor / quant / stock
     cross-sections actually passed to the shadows to
-    ``shadow_dir/signal_scores.jsonl`` (one row per ``as_of``). Forward IC and
-    the signal correlation are separate passes once returns exist. After the
-    markdown is written, the static dashboard next to ``out_dir`` is rebuilt.
+    ``shadow_dir/signal_scores.jsonl``, and day-level ``market_regime`` /
+    volatility / event tags to ``shadow_dir/decision_context.jsonl`` (one row
+    per ``as_of``). Forward IC, signal correlation, and condition accuracy are
+    separate passes once returns exist. After the markdown is written, the
+    static dashboard next to ``out_dir`` is rebuilt.
     """
     costs = CostTracker()
     validations = ValidationTracker()
@@ -400,6 +440,10 @@ async def run_daily_pipeline(
             quant_scores=quant_scores,
             agent_scores=agent_scores,
             origin="synthetic",
+        )
+        _record_decision_context(
+            shadow_dir,
+            synthetic_context(as_of=as_of, run_id=run_id),
         )
         engine = ShadowEngine(
             shadow_dir,
@@ -458,12 +502,13 @@ async def run_daily_pipeline(
             universe_code=universe_code,
             repo=pit,
         )
-        agent_scores, agent_points, agent_notes = await _live_agent_scores(
+        agent_scores, agent_points, agent_notes, decision_ctx = await _live_agent_scores(
             as_of=as_of,
             market=market,
             universe_code=universe_code,
             repo=pit,
             run_research=run_research,
+            run_id=run_id,
         )
         _record_agent_scores(
             shadow_dir,
@@ -481,6 +526,7 @@ async def run_daily_pipeline(
             agent_scores=agent_scores,
             origin="live",
         )
+        _record_decision_context(shadow_dir, decision_ctx)
         n = len(live.symbols)
         n_scored = len(live.factor_scores)
         n_quant = len(quant_scores)

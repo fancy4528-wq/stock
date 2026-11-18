@@ -70,6 +70,7 @@ class MonthlyReview(BaseModel):
     factors: list[FactorHealth] = Field(default_factory=list)
     factor_note: str = ""
     conditions: list[ConditionAccuracy] = Field(default_factory=list)
+    condition_note: str = ""
     alerts: list[str] = Field(default_factory=list)
     costs: CostSummary = Field(default_factory=CostSummary)
     trading_cost_note: str = ""

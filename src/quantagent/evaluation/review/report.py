@@ -162,9 +162,12 @@ def render_monthly_review(review: MonthlyReview) -> str:
             "",
             "## 5. 分条件准确率",
             "",
-            "决策日志还没有 market_regime、波动率或事件条件标签，本节无数字。"
-            if not review.conditions
-            else "条件来自调用方传入的决策结果，本报告不自行查询。",
+            review.condition_note
+            or (
+                "决策日志还没有 market_regime、波动率或事件条件标签，本节无数字。"
+                if not review.conditions
+                else "条件来自 decision_context 日记。"
+            ),
             "",
             "| 条件 | 条数 | 5日方向命中率 |",
             "|---|---:|---:|",
